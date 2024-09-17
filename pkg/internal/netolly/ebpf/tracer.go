@@ -47,6 +47,7 @@ const (
 	aggregatedFlowsMap = "aggregated_flows"
 	connInitiatorsMap  = "conn_initiators"
 	flowDirectionsMap  = "flow_directions"
+	tcpLifeFlowsMap    = "tcplife_flows"
 )
 
 func tlog() *slog.Logger {
@@ -88,6 +89,7 @@ func NewFlowFetcher(
 	spec.Maps[aggregatedFlowsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[flowDirectionsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[connInitiatorsMap].MaxEntries = uint32(cacheMaxSize)
+	spec.Maps[tcpLifeFlowsMap].MaxEntries = uint32(cacheMaxSize)
 
 	traceMsgs := 0
 	if tlog.Enabled(context.TODO(), slog.LevelDebug) {

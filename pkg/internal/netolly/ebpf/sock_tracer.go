@@ -28,11 +28,11 @@ import (
 	"unsafe"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
-	"golang.org/x/sys/unix"
-
 	"github.com/grafana/beyla/pkg/internal/netolly/ifaces"
+	"golang.org/x/sys/unix"
 )
 
 // $BPF_CLANG and $BPF_CFLAGS are set by the Makefile.
@@ -46,6 +46,8 @@ type SockFlowFetcher struct {
 	objects       *NetSkObjects
 	ringbufReader *ringbuf.Reader
 	cacheMaxSize  int
+	//TCPLife
+	kp link.Link
 }
 
 func NewSockFlowFetcher(
@@ -67,6 +69,8 @@ func NewSockFlowFetcher(
 	spec.Maps[aggregatedFlowsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[flowDirectionsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[connInitiatorsMap].MaxEntries = uint32(cacheMaxSize)
+	//FIXME: add TCPLife map size here
+	spec.Maps[tcpLifeFlowsMap].MaxEntries = 1024 //uint32(cacheMaxSize)
 
 	traceMsgs := 0
 	if tlog.Enabled(context.TODO(), slog.LevelDebug) {
@@ -95,6 +99,14 @@ func NewSockFlowFetcher(
 		return nil, fmt.Errorf("loading and assigning BPF objects: %w", err)
 	}
 
+	//FIXME: Insert TCPLife hook
+	kp, err := link.Tracepoint("sock", "inet_sock_set_state", objects.HandleSetState, nil)
+	if err != nil {
+		return nil, fmt.Errorf("opening kprobe: %s", err)
+	} else {
+		tlog.Info("TCPLite: Successfully installed hook")
+	}
+
 	// read events from socket filter ringbuffer
 	flows, err := ringbuf.NewReader(objects.DirectFlows)
 	if err != nil {
@@ -104,6 +116,7 @@ func NewSockFlowFetcher(
 		objects:       &objects,
 		ringbufReader: flows,
 		cacheMaxSize:  cacheMaxSize,
+		kp:            kp,
 	}, nil
 }
 
@@ -158,6 +171,10 @@ func (m *SockFlowFetcher) closeObjects() []error {
 	if err := m.objects.DirectFlows.Close(); err != nil {
 		errs = append(errs, err)
 	}
+	//TCPLife
+	if err := m.objects.HandleSetState.Close(); err != nil {
+		errs = append(errs, err)
+	}
 	m.objects = nil
 	return errs
 }
@@ -176,6 +193,8 @@ func (m *SockFlowFetcher) ReadRingBuf() (ringbuf.Record, error) {
 // Supported Lookup/Delete operations by kernel: https://github.com/iovisor/bcc/blob/master/docs/kernel-versions.md
 // Race conditions here causes that some flows are lost in high-load scenarios
 func (m *SockFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
+	tlog().Debug("LookupAndDeleteMap ...")
+
 	flowMap := m.objects.AggregatedFlows
 
 	iterator := flowMap.Iterate()
@@ -185,6 +204,7 @@ func (m *SockFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
 	var metrics []NetFlowMetrics
 	// Changing Iterate+Delete by LookupAndDelete would prevent some possible race conditions
 	// TODO: detect whether LookupAndDelete is supported (Kernel>=4.20) and use it selectively
+	count := 0
 	for iterator.Next(&id, &metrics) {
 		if err := flowMap.Delete(id); err != nil {
 			tlog().Warn("couldn't delete flow entry", "flowId", id)
@@ -193,7 +213,44 @@ func (m *SockFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
 		// (probably due to race conditions) so we need to re-join metrics again at userspace
 		// TODO: instrument how many times the keys are is repeated in the same eviction
 		flows[id] = append(flows[id], metrics...)
+		count += 1
 	}
+
+	tlog().Debug("LookupAndDeleteMap ", "count", count)
+
+	// FIXME: TCPLife
+	m.lookupAndDeleteMapTclLife()
+
+	return flows
+}
+
+func (m *SockFlowFetcher) lookupAndDeleteMapTclLife() map[NetFlowId][]NetFlowMetrics {
+	tlog().Debug("LookupAndDeleteMapTCPLife ...")
+
+	flowMap := m.objects.TcplifeFlows
+
+	iterator := flowMap.Iterate()
+	flows := make(map[NetFlowId][]NetFlowMetrics, m.cacheMaxSize)
+
+	id := NetFlowId{}
+	var metrics []NetFlowMetrics
+	// Changing Iterate+Delete by LookupAndDelete would prevent some possible race conditions
+	// TODO: detect whether LookupAndDelete is supported (Kernel>=4.20) and use it selectively
+	count := 0
+	for iterator.Next(&id, &metrics) {
+		if err := flowMap.Delete(id); err != nil {
+			tlog().Warn("couldn't delete flow entry", "flowId", id)
+		}
+		// We observed that eBFP PerCPU map might insert multiple times the same key in the map
+		// (probably due to race conditions) so we need to re-join metrics again at userspace
+		// TODO: instrument how many times the keys are is repeated in the same eviction
+		flows[id] = append(flows[id], metrics...)
+		tlog().Debug("TCPLife", "Id", id.DstPort)
+		count += 1
+	}
+
+	tlog().Debug("LookupAndDeleteMapTCPLife", "count", count)
+
 	return flows
 }
 

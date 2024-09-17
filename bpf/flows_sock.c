@@ -284,3 +284,158 @@ const flow_id *unused_flow_id __attribute__((unused));
 const flow_record *unused_flow_record __attribute__((unused));
 
 char _license[] SEC("license") = "GPL";
+
+struct inet_sock_set_state_args {
+    long long pad;
+    const void * skaddr;
+    int oldstate;
+    int newstate;
+    u16 sport;
+    u16 dport;
+    u16 family;
+    u8 protocol;
+    u8 saddr[4];
+    u8 daddr[4];
+    u8 saddr_v6[16];
+    u8 daddr_v6[16];
+};
+
+SEC("tracepoint/sock/inet_sock_set_state")
+int handle_set_state(struct inet_sock_set_state_args *args)
+{
+    u16 family = args->family;
+    if (family != AF_INET) {
+        return 0;
+    }
+
+    if (args->protocol != IPPROTO_TCP) {
+        return 0;
+    }
+
+    unsigned long long pid = bpf_get_current_pid_tgid() >> 32;
+
+    // lport is either used in a filter here, or later
+    u16 lport = args->sport;
+    
+    // dport is either used in a filter here, or later
+    u16 dport = args->dport;
+    
+    //char msg0[] = "fam:%d proto:%d dport:%d\n";
+    //bpf_trace_printk(msg0, sizeof(msg0), args->family, args->protocol, args->dport);
+
+    //FIXME
+    if (dport != 8001) {
+        return 0;
+    }
+
+    // Debug
+    char msg[] = "lport:%d pid:%llu dport:%d\n";
+    bpf_trace_printk(msg, sizeof(msg), lport, pid, dport);
+
+    // capture birth time
+    if (args->newstate < TCP_FIN_WAIT1) {
+        /*
+         * Matching just ESTABLISHED may be sufficient, provided no code-path
+         * sets ESTABLISHED without a tcp_set_state() call. Until we know
+         * that for sure, match all early states to increase chances a
+         * timestamp is set.
+         * Note that this needs to be set before the PID filter later on,
+         * since the PID isn't reliable for these early stages, so we must
+         * save all timestamps and do the PID filter later when we can.
+         */
+        //u64 ts = bpf_ktime_get_ns();
+    }
+
+    // record PID & comm on SYN_SENT
+    if (args->newstate == TCP_SYN_SENT || args->newstate == TCP_LAST_ACK) {
+        // now we can PID filter, both here and a little later on for CLOSE
+    }
+
+    if (args->newstate != TCP_CLOSE) {
+        //return 0;
+    }
+
+    // calculate lifespan
+
+    // get throughput stats. see tcp_get_info().
+    // sk is mostly used as a UUID, and for two tcp stats:
+    // struct sock *sk = (struct sock *)args->skaddr;    
+    // u64 rx_b, tx_b;
+    // struct tcp_sock *tp = (struct tcp_sock *)sk;
+    // rx_b = tp->bytes_received;
+    // tx_b = tp->bytes_acked;
+    
+    // char msg1[] = "port:%d rx:%llu tx:%llu\n";
+    // bpf_trace_printk(msg1, sizeof(msg1), lport, rx_b, tx_b);
+
+    flow_id id;
+    __builtin_memset(&id, 0, sizeof(id));
+    
+    id.src_port = lport;
+    id.dst_port = dport;
+    id.transport_protocol = args->protocol;
+
+    if (args->family == AF_INET) {
+        __builtin_memcpy(id.src_ip.s6_addr, ip4in6, sizeof(ip4in6));
+        __builtin_memcpy(id.dst_ip.s6_addr, ip4in6, sizeof(ip4in6));
+        __builtin_memcpy(id.src_ip.s6_addr + sizeof(ip4in6), args->daddr, sizeof(args->daddr));
+        __builtin_memcpy(id.dst_ip.s6_addr + sizeof(ip4in6), args->saddr, sizeof(args->saddr));
+    } else if (args->family == AF_INET6) {
+        __builtin_memcpy(id.src_ip.s6_addr, args->saddr_v6, sizeof(args->saddr_v6));
+        __builtin_memcpy(id.dst_ip.s6_addr, args->daddr_v6, sizeof(args->daddr_v6));        
+    } else {
+        return 0;
+    }
+
+    u64 current_time = bpf_ktime_get_ns();
+
+    flow_metrics *tcp_flow = (flow_metrics *)bpf_map_lookup_elem(&tcplife_flows, &id);
+    if (tcp_flow != NULL) {
+        char msge[] = "found flow dport:%d\n";
+        bpf_trace_printk(msge, sizeof(msge), dport);
+
+        //FIXME
+        tcp_flow->packets += 1;
+        tcp_flow->bytes += 1;
+        tcp_flow->end_mono_time_ns = current_time;
+
+        long ret = bpf_map_update_elem(&tcplife_flows, &id, tcp_flow, BPF_ANY);
+        if (ret != 0) {
+            //FIXME
+            char msg1[] = "error-1:%d\n";
+            bpf_trace_printk(msg1, sizeof(msg1), ret);
+            bpf_dbg_printk("error updating flow %d\n", ret);
+            return 0;
+        }
+    } else {
+        char msge[] = "new flow dport:%d\n";
+        bpf_trace_printk(msge, sizeof(msge), dport);
+
+        // Key does not exist in the map, and will need to create a new entry.
+        flow_metrics new_flow = {
+            .packets = 1,
+            .bytes = 1,
+            .start_mono_time_ns = current_time,
+            .end_mono_time_ns = current_time,
+            .flags = 0,
+            .iface_direction = INGRESS,
+        };
+
+        // even if we know that the entry is new, another CPU might be concurrently inserting a flow
+        // so we need to specify BPF_ANY
+        long ret = bpf_map_update_elem(&tcplife_flows, &id, &new_flow, BPF_ANY);
+        if (ret != 0) {
+            //FIXME
+            char msg1[] = "error-2:%d\n";
+            bpf_trace_printk(msg1, sizeof(msg1), ret);
+
+            bpf_dbg_printk("error adding flow %d\n", ret);    
+            return 0;        
+        }
+    }
+
+    char msgs[] = "success dport:%d\n";
+    bpf_trace_printk(msgs, sizeof(msgs), dport);
+
+    return 0;
+}
