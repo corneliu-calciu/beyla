@@ -219,18 +219,18 @@ func (m *SockFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
 	tlog().Debug("LookupAndDeleteMap ", "count", count)
 
 	// FIXME: TCPLife
-	m.lookupAndDeleteMapTclLife()
+	flows = m.lookupAndDeleteMapTclLife(flows)
 
 	return flows
 }
 
-func (m *SockFlowFetcher) lookupAndDeleteMapTclLife() map[NetFlowId][]NetFlowMetrics {
+func (m *SockFlowFetcher) lookupAndDeleteMapTclLife(flows map[NetFlowId][]NetFlowMetrics) map[NetFlowId][]NetFlowMetrics {
 	tlog().Debug("LookupAndDeleteMapTCPLife ...")
 
 	flowMap := m.objects.TcplifeFlows
 
 	iterator := flowMap.Iterate()
-	flows := make(map[NetFlowId][]NetFlowMetrics, m.cacheMaxSize)
+	//flows := make(map[NetFlowId][]NetFlowMetrics, m.cacheMaxSize)
 
 	id := NetFlowId{}
 	var metrics []NetFlowMetrics
