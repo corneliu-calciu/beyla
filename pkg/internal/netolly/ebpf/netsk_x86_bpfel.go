@@ -90,6 +90,7 @@ type NetSkSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type NetSkProgramSpecs struct {
+	HandleSetState   *ebpf.ProgramSpec `ebpf:"handle_set_state"`
 	SocketHttpFilter *ebpf.ProgramSpec `ebpf:"socket__http_filter"`
 }
 
@@ -101,6 +102,7 @@ type NetSkMapSpecs struct {
 	ConnInitiators  *ebpf.MapSpec `ebpf:"conn_initiators"`
 	DirectFlows     *ebpf.MapSpec `ebpf:"direct_flows"`
 	FlowDirections  *ebpf.MapSpec `ebpf:"flow_directions"`
+	TcplifeFlows    *ebpf.MapSpec `ebpf:"tcplife_flows"`
 }
 
 // NetSkObjects contains all objects after they have been loaded into the kernel.
@@ -126,6 +128,7 @@ type NetSkMaps struct {
 	ConnInitiators  *ebpf.Map `ebpf:"conn_initiators"`
 	DirectFlows     *ebpf.Map `ebpf:"direct_flows"`
 	FlowDirections  *ebpf.Map `ebpf:"flow_directions"`
+	TcplifeFlows    *ebpf.Map `ebpf:"tcplife_flows"`
 }
 
 func (m *NetSkMaps) Close() error {
@@ -134,6 +137,7 @@ func (m *NetSkMaps) Close() error {
 		m.ConnInitiators,
 		m.DirectFlows,
 		m.FlowDirections,
+		m.TcplifeFlows,
 	)
 }
 
@@ -141,11 +145,13 @@ func (m *NetSkMaps) Close() error {
 //
 // It can be passed to LoadNetSkObjects or ebpf.CollectionSpec.LoadAndAssign.
 type NetSkPrograms struct {
+	HandleSetState   *ebpf.Program `ebpf:"handle_set_state"`
 	SocketHttpFilter *ebpf.Program `ebpf:"socket__http_filter"`
 }
 
 func (p *NetSkPrograms) Close() error {
 	return _NetSkClose(
+		p.HandleSetState,
 		p.SocketHttpFilter,
 	)
 }

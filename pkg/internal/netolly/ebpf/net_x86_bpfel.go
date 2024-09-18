@@ -102,6 +102,7 @@ type NetMapSpecs struct {
 	ConnInitiators  *ebpf.MapSpec `ebpf:"conn_initiators"`
 	DirectFlows     *ebpf.MapSpec `ebpf:"direct_flows"`
 	FlowDirections  *ebpf.MapSpec `ebpf:"flow_directions"`
+	TcplifeFlows    *ebpf.MapSpec `ebpf:"tcplife_flows"`
 }
 
 // NetObjects contains all objects after they have been loaded into the kernel.
@@ -127,6 +128,7 @@ type NetMaps struct {
 	ConnInitiators  *ebpf.Map `ebpf:"conn_initiators"`
 	DirectFlows     *ebpf.Map `ebpf:"direct_flows"`
 	FlowDirections  *ebpf.Map `ebpf:"flow_directions"`
+	TcplifeFlows    *ebpf.Map `ebpf:"tcplife_flows"`
 }
 
 func (m *NetMaps) Close() error {
@@ -135,6 +137,7 @@ func (m *NetMaps) Close() error {
 		m.ConnInitiators,
 		m.DirectFlows,
 		m.FlowDirections,
+		m.TcplifeFlows,
 	)
 }
 
