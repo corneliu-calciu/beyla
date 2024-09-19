@@ -42,6 +42,10 @@ type NetFlowMetricsT struct {
 	IfaceDirection  uint8
 	Initiator       uint8
 	Errno           uint8
+	State           uint8
+	Rxbytes         uint64
+	Txbytes         uint64
+	Duration        uint64
 }
 
 type NetFlowRecordT struct {

@@ -215,9 +215,9 @@ func getDefinitions(groups AttrGroups) map[Section]AttrReportGroup {
 				attr.IfaceDirection: Default(ifaceDirEnabled),
 				attr.Iface:          Default(ifaceDirEnabled),
 				// TCPlife
-				attr.ConState: false,
-				attr.RxBytes:  false,
-				attr.TxBytes:  false,
+				attr.State:    false,
+				attr.Rxbytes:  false,
+				attr.Txbytes:  false,
 				attr.Duration: false,
 			},
 		},

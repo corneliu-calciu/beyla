@@ -46,6 +46,15 @@ func printFlow(f *ebpf.Record) {
 	sb.WriteString(strconv.FormatUint(uint64(f.Id.SrcPort), 10))
 	sb.WriteString(" dst.port=")
 	sb.WriteString(strconv.FormatUint(uint64(f.Id.DstPort), 10))
+	// TCPLife
+	sb.WriteString(" rxbytes=")
+	sb.WriteString(strconv.FormatUint(f.Metrics.Rxbytes, 7))
+	sb.WriteString(" txbytes=")
+	sb.WriteString(strconv.FormatUint(f.Metrics.Txbytes, 7))
+	sb.WriteString(" state=")
+	sb.WriteString(strconv.Itoa(int(f.Metrics.State)))
+	sb.WriteString(" duration=")
+	sb.WriteString(strconv.FormatUint(f.Metrics.Duration, 3))
 
 	for k, v := range f.Attrs.Metadata {
 		sb.WriteString(" ")

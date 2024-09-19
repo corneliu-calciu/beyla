@@ -20,6 +20,7 @@ package flow
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -109,20 +110,34 @@ func (m *MapTracer) evictionSynchronization(ctx context.Context, out chan<- []*e
 func (m *MapTracer) evictFlows(ctx context.Context, forwardFlows chan<- []*ebpf.Record) {
 	var forwardingFlows []*ebpf.Record
 	laterFlowNs := uint64(0)
+	mtlog := mtlog()
 	for flowKey, flowMetrics := range m.mapFetcher.LookupAndDeleteMap() {
 		aggregatedMetrics := m.aggregate(flowMetrics)
+		data := fmt.Sprintf("agg:%v metric:%v", aggregatedMetrics, flowMetrics)
+		mtlog.Debug("evictFlowsTCPLife", "data", data)
+
 		// we ignore metrics that haven't been aggregated (e.g. all the mapped values are ignored)
-		if aggregatedMetrics.EndMonoTimeNs == 0 {
-			continue
-		}
+		//if aggregatedMetrics.EndMonoTimeNs == 0 {
+		//	continue
+		//}
 		// If it iterated an entry that do not have updated flows
 		if aggregatedMetrics.EndMonoTimeNs > laterFlowNs {
 			laterFlowNs = aggregatedMetrics.EndMonoTimeNs
 		}
-		forwardingFlows = append(forwardingFlows, ebpf.NewRecord(flowKey, aggregatedMetrics))
+
+		//TODO: TCPLife flows to be added directly to forwardingFlows
+		//forwardingFlows = append(forwardingFlows, ebpf.NewRecord(flowKey, aggregatedMetrics))
+		for _, metric := range flowMetrics {
+			item := &ebpf.Record{
+				NetFlowRecordT: ebpf.NetFlowRecordT{
+					Id:      flowKey,
+					Metrics: metric,
+				},
+			}
+			forwardingFlows = append(forwardingFlows, item)
+		}
 	}
 	m.lastEvictionNs = laterFlowNs
-	mtlog := mtlog()
 	select {
 	case <-ctx.Done():
 		mtlog.Debug("skipping flow eviction as agent is being stopped")

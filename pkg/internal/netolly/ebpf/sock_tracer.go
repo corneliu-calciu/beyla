@@ -192,7 +192,7 @@ func (m *SockFlowFetcher) ReadRingBuf() (ringbuf.Record, error) {
 // TODO: detect whether BatchLookupAndDelete is supported (Kernel>=5.6) and use it selectively
 // Supported Lookup/Delete operations by kernel: https://github.com/iovisor/bcc/blob/master/docs/kernel-versions.md
 // Race conditions here causes that some flows are lost in high-load scenarios
-func (m *SockFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
+func (m *SockFlowFetcher) LookupAndDeleteMapOld() map[NetFlowId][]NetFlowMetrics {
 	tlog().Debug("LookupAndDeleteMap ...")
 
 	flowMap := m.objects.AggregatedFlows
@@ -219,18 +219,19 @@ func (m *SockFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
 	tlog().Debug("LookupAndDeleteMap ", "count", count)
 
 	// FIXME: TCPLife
-	flows = m.lookupAndDeleteMapTclLife(flows)
+	//flows = m.lookupAndDeleteMapTclLife(flows)
 
 	return flows
 }
 
-func (m *SockFlowFetcher) lookupAndDeleteMapTclLife(flows map[NetFlowId][]NetFlowMetrics) map[NetFlowId][]NetFlowMetrics {
+// func (m *SockFlowFetcher) lookupAndDeleteMapTclLife() map[NetFlowId][]NetFlowMetrics {
+func (m *SockFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
 	tlog().Debug("LookupAndDeleteMapTCPLife ...")
 
 	flowMap := m.objects.TcplifeFlows
 
 	iterator := flowMap.Iterate()
-	//flows := make(map[NetFlowId][]NetFlowMetrics, m.cacheMaxSize)
+	flows := make(map[NetFlowId][]NetFlowMetrics, m.cacheMaxSize)
 
 	id := NetFlowId{}
 	var metrics []NetFlowMetrics
@@ -244,9 +245,19 @@ func (m *SockFlowFetcher) lookupAndDeleteMapTclLife(flows map[NetFlowId][]NetFlo
 		// We observed that eBFP PerCPU map might insert multiple times the same key in the map
 		// (probably due to race conditions) so we need to re-join metrics again at userspace
 		// TODO: instrument how many times the keys are is repeated in the same eviction
-		flows[id] = append(flows[id], metrics...)
-		tlog().Debug("TCPLife", "Id", id.DstPort)
+		//flows[id] = append(flows[id], metrics...)
+		for i := 0; i < len(metrics); i++ {
+			// Skip empty records
+			if metrics[i].Bytes == 0 && metrics[i].Rxbytes == 0 && metrics[i].Txbytes == 0 {
+				continue
+			}
+			data := fmt.Sprintf("%v", metrics[i])
+			tlog().Debug("LookupAndDeleteMapTCPLife", "state", metrics[i].State, "metrics", data)
+			flows[id] = append(flows[id], metrics[i])
+		}
 		count += 1
+		data := fmt.Sprintf("%v", id)
+		tlog().Debug("LookupAndDeleteMapTCPLife", "data", data)
 	}
 
 	tlog().Debug("LookupAndDeleteMapTCPLife", "count", count)

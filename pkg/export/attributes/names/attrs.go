@@ -83,9 +83,9 @@ const (
 	ClientPort = Name("client.port")
 
 	//TCPLife
-	ConState = Name("state")
-	RxBytes  = Name("rxbytes")
-	TxBytes  = Name("txbytes")
+	State    = Name("state")
+	Rxbytes  = Name("rxbytes")
+	Txbytes  = Name("txbytes")
 	Duration = Name("duration")
 
 	// Direction values: request or response

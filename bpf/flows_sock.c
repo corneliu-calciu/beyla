@@ -398,6 +398,11 @@ int handle_set_state(struct inet_sock_set_state_args *args)
         tcp_flow->packets += 1;
         tcp_flow->bytes += 1;
         tcp_flow->end_mono_time_ns = current_time;
+        // 
+        tcp_flow->rxbytes += 100;
+        tcp_flow->txbytes += 100;
+        tcp_flow->duration = current_time;
+        tcp_flow->state = (u8)args->newstate;
 
         long ret = bpf_map_update_elem(&tcplife_flows, &id, tcp_flow, BPF_ANY);
         if (ret != 0) {
@@ -419,6 +424,11 @@ int handle_set_state(struct inet_sock_set_state_args *args)
             .end_mono_time_ns = current_time,
             .flags = 0,
             .iface_direction = INGRESS,
+            .initiator = INITIATOR_SRC,
+            .duration = 0,
+            .rxbytes = 100,
+            .txbytes = 100,
+            .state = (u8)args->newstate,
         };
 
         // even if we know that the entry is new, another CPU might be concurrently inserting a flow
