@@ -251,7 +251,7 @@ func (m *SockFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
 			if metrics[i].Bytes == 0 && metrics[i].Rxbytes == 0 && metrics[i].Txbytes == 0 {
 				continue
 			}
-			data := fmt.Sprintf("%v", metrics[i])
+			data := fmt.Sprintf("%v DIP:%v", metrics[i], id.DstIp)
 			tlog().Debug("LookupAndDeleteMapTCPLife", "state", metrics[i].State, "metrics", data)
 			flows[id] = append(flows[id], metrics[i])
 		}

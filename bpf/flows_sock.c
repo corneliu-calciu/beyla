@@ -24,6 +24,7 @@
 #include "bpf_dbg.h"
 #include "flows_common.h"
 #include "protocol_defs.h"
+#include "bpf_core_read.h"
 
 struct __tcphdr {
     __be16 source;
@@ -228,7 +229,7 @@ int socket__http_filter(struct __sk_buff *skb) {
             if(new_flow.iface_direction != UNKNOWN) {
                 // errors are intentionally omitted
                 bpf_map_update_elem(&flow_directions, &id, &new_flow.iface_direction, BPF_NOEXIST);
-            } 
+            }
             // fallback for lost or already started connections and UDP
             else {
                 new_flow.iface_direction = INGRESS;
@@ -285,23 +286,45 @@ const flow_record *unused_flow_record __attribute__((unused));
 
 char _license[] SEC("license") = "GPL";
 
-struct inet_sock_set_state_args {
-    long long pad;
-    const void * skaddr;
-    int oldstate;
-    int newstate;
-    u16 sport;
-    u16 dport;
-    u16 family;
-    u8 protocol;
-    u8 saddr[4];
-    u8 daddr[4];
-    u8 saddr_v6[16];
-    u8 daddr_v6[16];
-};
+// struct {
+//     __uint(type, BPF_MAP_TYPE_HASH);
+//     __type(key, struct sock *);
+//     __type(value, u64);
+// } birth SEC(".maps");
+
+// struct inet_sock_set_state_args {
+//     long long pad;
+//     const void * skaddr;
+//     int oldstate;
+//     int newstate;
+//     u16 sport;
+//     u16 dport;
+//     u16 family;
+//     u8 protocol;
+//     u8 saddr[4];
+//     u8 daddr[4];
+//     u8 saddr_v6[16];
+//     u8 daddr_v6[16];
+// };
+
+// struct trace_event_raw_inet_sock_set_state {
+// 	struct trace_entry ent;
+// 	const void *skaddr;
+// 	int oldstate;
+// 	int newstate;
+// 	__u16 sport;
+// 	__u16 dport;
+// 	__u16 family;
+// 	__u16 protocol;
+// 	__u8 saddr[4];
+// 	__u8 daddr[4];
+// 	__u8 saddr_v6[16];
+// 	__u8 daddr_v6[16];
+// 	char __data[0];
+// };
 
 SEC("tracepoint/sock/inet_sock_set_state")
-int handle_set_state(struct inet_sock_set_state_args *args)
+int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
 {
     u16 family = args->family;
     if (family != AF_INET) {
@@ -312,25 +335,27 @@ int handle_set_state(struct inet_sock_set_state_args *args)
         return 0;
     }
 
-    unsigned long long pid = bpf_get_current_pid_tgid() >> 32;
+    //unsigned long long pid = bpf_get_current_pid_tgid() >> 32;
 
     // lport is either used in a filter here, or later
     u16 lport = args->sport;
-    
+
     // dport is either used in a filter here, or later
     u16 dport = args->dport;
-    
+
     //char msg0[] = "fam:%d proto:%d dport:%d\n";
     //bpf_trace_printk(msg0, sizeof(msg0), args->family, args->protocol, args->dport);
 
     //FIXME
-    if (dport != 8001) {
+    if (dport != 8001 && lport != 8001) {
         return 0;
     }
 
     // Debug
-    char msg[] = "lport:%d pid:%llu dport:%d\n";
-    bpf_trace_printk(msg, sizeof(msg), lport, pid, dport);
+    //char msg[] = "lport:%d pid:%llu dport:%d\n";
+    //bpf_trace_printk(msg, sizeof(msg), lport, pid, dport);
+    char msg[] = "addr:%d:%d:%d\n";
+    bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->daddr[3]);
 
     // capture birth time
     if (args->newstate < TCP_FIN_WAIT1) {
@@ -343,7 +368,6 @@ int handle_set_state(struct inet_sock_set_state_args *args)
          * since the PID isn't reliable for these early stages, so we must
          * save all timestamps and do the PID filter later when we can.
          */
-        //u64 ts = bpf_ktime_get_ns();
     }
 
     // record PID & comm on SYN_SENT
@@ -356,33 +380,39 @@ int handle_set_state(struct inet_sock_set_state_args *args)
     }
 
     // calculate lifespan
+    if (args->skaddr == NULL) {
+        char msgs[] = "null skaddr\n";
+        bpf_trace_printk(msgs, sizeof(msgs));
+        return 0;
+    }
 
+    u64 rx_b=0, tx_b=0;
     // get throughput stats. see tcp_get_info().
-    // sk is mostly used as a UUID, and for two tcp stats:
-    // struct sock *sk = (struct sock *)args->skaddr;    
-    // u64 rx_b, tx_b;
-    // struct tcp_sock *tp = (struct tcp_sock *)sk;
-    // rx_b = tp->bytes_received;
-    // tx_b = tp->bytes_acked;
-    
-    // char msg1[] = "port:%d rx:%llu tx:%llu\n";
-    // bpf_trace_printk(msg1, sizeof(msg1), lport, rx_b, tx_b);
+    struct tcp_sock *tp = (struct tcp_sock *)(args->skaddr);
+    BPF_CORE_READ_INTO(&rx_b, tp, bytes_received);
+    BPF_CORE_READ_INTO(&tx_b, tp, bytes_sent);
+
 
     flow_id id;
     __builtin_memset(&id, 0, sizeof(id));
-    
+
     id.src_port = lport;
     id.dst_port = dport;
     id.transport_protocol = args->protocol;
 
     if (args->family == AF_INET) {
+        u32 ip4_s_l;
+        u32 ip4_d_l;
+        BPF_CORE_READ_INTO(&ip4_s_l, args, saddr);        
+        BPF_CORE_READ_INTO(&ip4_d_l, args, daddr);        
+
         __builtin_memcpy(id.src_ip.s6_addr, ip4in6, sizeof(ip4in6));
         __builtin_memcpy(id.dst_ip.s6_addr, ip4in6, sizeof(ip4in6));
-        __builtin_memcpy(id.src_ip.s6_addr + sizeof(ip4in6), args->daddr, sizeof(args->daddr));
-        __builtin_memcpy(id.dst_ip.s6_addr + sizeof(ip4in6), args->saddr, sizeof(args->saddr));
+        __builtin_memcpy(id.src_ip.s6_addr + sizeof(ip4in6), &ip4_s_l, sizeof(ip4_s_l));
+        __builtin_memcpy(id.dst_ip.s6_addr + sizeof(ip4in6), &ip4_d_l, sizeof(ip4_d_l));             
     } else if (args->family == AF_INET6) {
-        __builtin_memcpy(id.src_ip.s6_addr, args->saddr_v6, sizeof(args->saddr_v6));
-        __builtin_memcpy(id.dst_ip.s6_addr, args->daddr_v6, sizeof(args->daddr_v6));        
+        BPF_CORE_READ_INTO(&id.src_ip.s6_addr, args, saddr_v6);
+        BPF_CORE_READ_INTO(&id.dst_ip.s6_addr, args, daddr_v6);
     } else {
         return 0;
     }
@@ -396,11 +426,11 @@ int handle_set_state(struct inet_sock_set_state_args *args)
 
         //FIXME
         tcp_flow->packets += 1;
-        tcp_flow->bytes += 1;
+        tcp_flow->bytes = rx_b;
         tcp_flow->end_mono_time_ns = current_time;
-        // 
-        tcp_flow->rxbytes += 100;
-        tcp_flow->txbytes += 100;
+        //
+        tcp_flow->rxbytes = rx_b;
+        tcp_flow->txbytes = tx_b;
         tcp_flow->duration = current_time;
         tcp_flow->state = (u8)args->newstate;
 
@@ -419,28 +449,22 @@ int handle_set_state(struct inet_sock_set_state_args *args)
         // Key does not exist in the map, and will need to create a new entry.
         flow_metrics new_flow = {
             .packets = 1,
-            .bytes = 1,
+            .bytes = rx_b,
             .start_mono_time_ns = current_time,
             .end_mono_time_ns = current_time,
             .flags = 0,
             .iface_direction = INGRESS,
             .initiator = INITIATOR_SRC,
             .duration = 0,
-            .rxbytes = 100,
-            .txbytes = 100,
+            .rxbytes = rx_b,
+            .txbytes = tx_b,
             .state = (u8)args->newstate,
         };
 
-        // even if we know that the entry is new, another CPU might be concurrently inserting a flow
-        // so we need to specify BPF_ANY
         long ret = bpf_map_update_elem(&tcplife_flows, &id, &new_flow, BPF_ANY);
         if (ret != 0) {
-            //FIXME
-            char msg1[] = "error-2:%d\n";
-            bpf_trace_printk(msg1, sizeof(msg1), ret);
-
-            bpf_dbg_printk("error adding flow %d\n", ret);    
-            return 0;        
+            bpf_dbg_printk("error adding flow %d\n", ret);
+            return 0;
         }
     }
 
