@@ -307,19 +307,14 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     // dport is either used in a filter here, or later
     u16 dport = args->dport;
 
-    //char msg0[] = "fam:%d proto:%d dport:%d\n";
-    //bpf_trace_printk(msg0, sizeof(msg0), args->family, args->protocol, args->dport);
-
     //FIXME
     if (dport != 8001 && lport != 8001) {
         return 0;
     }
 
     // Debug
-    //char msg[] = "lport:%d pid:%llu dport:%d\n";
-    //bpf_trace_printk(msg, sizeof(msg), lport, pid, dport);
-    char msg[] = "addr:%d:%d:%d\n";
-    bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->daddr[3]);
+    char msg[] = "addr:%d:%d sk:%p\n";
+    bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->skaddr);
 
     const struct sock *sk = (const struct sock *)args->skaddr;
     if (sk == NULL) {
@@ -374,12 +369,18 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
          * since the PID isn't reliable for these early stages, so we must
          * save all timestamps and do the PID filter later when we can.
          */
-        bpf_map_update_elem(&tcplife_flow_history, &sk, &current_time, BPF_ANY);        
+        bpf_map_update_elem(&tcplife_flow_history, &sk, &current_time, BPF_ANY);
+        // Debug   
+        char msg[] = "create history:%p\n";
+        bpf_trace_printk(msg, sizeof(msg), sk);                 
     }
 
     // calculate lifespan
     u64 *birth_info = (u64*)bpf_map_lookup_elem(&tcplife_flow_history, &sk);
     if (birth_info == NULL) {
+        // Debug
+        char msg[] = "cannot find history:%p\n";
+        bpf_trace_printk(msg, sizeof(msg), sk);  
         return 0;
     }
     
@@ -389,6 +390,9 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     if (newstate == TCP_CLOSE) {
         // The connection ended, remove birth informations
         bpf_map_delete_elem(&tcplife_flow_history, &sk);
+        // Debug
+        char msg[] = "remove history:%p\n";
+        bpf_trace_printk(msg, sizeof(msg), sk);        
     }
 
     // Create a new entry.
@@ -411,8 +415,8 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         return 0;
     }    
 
-    char msgs[] = "success dport:%d\n";
-    bpf_trace_printk(msgs, sizeof(msgs), dport);
+    char msgs[] = "success dport:%d age:%llu ms\n";
+    bpf_trace_printk(msgs, sizeof(msgs), dport, delta_us/1000);
 
     return 0;
 }
