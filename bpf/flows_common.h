@@ -92,7 +92,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, 1024);          // Maximum number of entries
-    __type(key, flow_id);
+    __type(key, const void *);
     __type(value, u64);
 } tcplife_flow_history SEC(".maps");
 

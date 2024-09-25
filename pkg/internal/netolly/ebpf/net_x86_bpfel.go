@@ -102,11 +102,12 @@ type NetProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type NetMapSpecs struct {
-	AggregatedFlows *ebpf.MapSpec `ebpf:"aggregated_flows"`
-	ConnInitiators  *ebpf.MapSpec `ebpf:"conn_initiators"`
-	DirectFlows     *ebpf.MapSpec `ebpf:"direct_flows"`
-	FlowDirections  *ebpf.MapSpec `ebpf:"flow_directions"`
-	TcplifeFlows    *ebpf.MapSpec `ebpf:"tcplife_flows"`
+	AggregatedFlows    *ebpf.MapSpec `ebpf:"aggregated_flows"`
+	ConnInitiators     *ebpf.MapSpec `ebpf:"conn_initiators"`
+	DirectFlows        *ebpf.MapSpec `ebpf:"direct_flows"`
+	FlowDirections     *ebpf.MapSpec `ebpf:"flow_directions"`
+	TcplifeFlowHistory *ebpf.MapSpec `ebpf:"tcplife_flow_history"`
+	TcplifeFlows       *ebpf.MapSpec `ebpf:"tcplife_flows"`
 }
 
 // NetObjects contains all objects after they have been loaded into the kernel.
@@ -128,11 +129,12 @@ func (o *NetObjects) Close() error {
 //
 // It can be passed to LoadNetObjects or ebpf.CollectionSpec.LoadAndAssign.
 type NetMaps struct {
-	AggregatedFlows *ebpf.Map `ebpf:"aggregated_flows"`
-	ConnInitiators  *ebpf.Map `ebpf:"conn_initiators"`
-	DirectFlows     *ebpf.Map `ebpf:"direct_flows"`
-	FlowDirections  *ebpf.Map `ebpf:"flow_directions"`
-	TcplifeFlows    *ebpf.Map `ebpf:"tcplife_flows"`
+	AggregatedFlows    *ebpf.Map `ebpf:"aggregated_flows"`
+	ConnInitiators     *ebpf.Map `ebpf:"conn_initiators"`
+	DirectFlows        *ebpf.Map `ebpf:"direct_flows"`
+	FlowDirections     *ebpf.Map `ebpf:"flow_directions"`
+	TcplifeFlowHistory *ebpf.Map `ebpf:"tcplife_flow_history"`
+	TcplifeFlows       *ebpf.Map `ebpf:"tcplife_flows"`
 }
 
 func (m *NetMaps) Close() error {
@@ -141,6 +143,7 @@ func (m *NetMaps) Close() error {
 		m.ConnInitiators,
 		m.DirectFlows,
 		m.FlowDirections,
+		m.TcplifeFlowHistory,
 		m.TcplifeFlows,
 	)
 }

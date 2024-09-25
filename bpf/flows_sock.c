@@ -321,7 +321,7 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     char msg[] = "addr:%d:%d:%d\n";
     bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->daddr[3]);
 
-    struct sock *sk = (struct sock *)args->skaddr;
+    const struct sock *sk = (const struct sock *)args->skaddr;
     if (sk == NULL) {
         char msgs[] = "null skaddr\n";
         bpf_trace_printk(msgs, sizeof(msgs));
@@ -374,11 +374,11 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
          * since the PID isn't reliable for these early stages, so we must
          * save all timestamps and do the PID filter later when we can.
          */
-        bpf_map_update_elem(&tcplife_flow_history, &id, &current_time, BPF_ANY);        
+        bpf_map_update_elem(&tcplife_flow_history, &sk, &current_time, BPF_ANY);        
     }
 
     // calculate lifespan
-    u64 *birth_info = (u64*)bpf_map_lookup_elem(&tcplife_flow_history, &id);
+    u64 *birth_info = (u64*)bpf_map_lookup_elem(&tcplife_flow_history, &sk);
     if (birth_info == NULL) {
         return 0;
     }
@@ -388,7 +388,7 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
 
     if (newstate == TCP_CLOSE) {
         // The connection ended, remove birth informations
-        bpf_map_delete_elem(&tcplife_flow_history, &id);
+        bpf_map_delete_elem(&tcplife_flow_history, &sk);
     }
 
     // Create a new entry.
