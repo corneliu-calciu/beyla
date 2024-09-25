@@ -299,6 +299,7 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     }
 
     //unsigned long long pid = bpf_get_current_pid_tgid() >> 32;
+    int newstate = args->newstate;
 
     // lport is either used in a filter here, or later
     u16 lport = args->sport;
@@ -320,7 +321,8 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     char msg[] = "addr:%d:%d:%d\n";
     bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->daddr[3]);
 
-    if (args->skaddr == NULL) {
+    struct sock *sk = (struct sock *)args->skaddr;
+    if (sk == NULL) {
         char msgs[] = "null skaddr\n";
         bpf_trace_printk(msgs, sizeof(msgs));
         return 0;
@@ -361,10 +363,8 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     // Read the current time
     u64 current_time = bpf_ktime_get_ns();
 
-    //struct sock *sk = (struct sock *)args->skaddr;
-
     // capture birth time
-    if (args->newstate < TCP_FIN_WAIT1) {
+    if (newstate < TCP_FIN_WAIT1) {
         /*
          * Matching just ESTABLISHED may be sufficient, provided no code-path
          * sets ESTABLISHED without a tcp_set_state() call. Until we know
@@ -374,27 +374,27 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
          * since the PID isn't reliable for these early stages, so we must
          * save all timestamps and do the PID filter later when we can.
          */
-        //bpf_map_update_elem(&tcplife_birth, &id, &current_time, BPF_ANY);        
+        bpf_map_update_elem(&tcplife_flow_history, &id, &current_time, BPF_ANY);        
     }
 
     // calculate lifespan
-    //u64 *birth_info = (u64*)bpf_map_lookup_elem(&tcplife_birth, sk);
-    //if (birth_info == NULL) {
-    //    return 0;
-    //}
-    
-    if (args->newstate == TCP_CLOSE) {
-        // The connection ended, remove birth informations
-        //bpf_map_delete_elem(&tcplife_birth, &id);
+    u64 *birth_info = (u64*)bpf_map_lookup_elem(&tcplife_flow_history, &id);
+    if (birth_info == NULL) {
+        return 0;
     }
+    
+    u64 start_ts = *birth_info;
+    u64 delta_us = (current_time - start_ts) / 1000;
 
-    u64 delta_us = 1000;
-    //delta_us = (current_time - *birth_info) / 1000;
+    if (newstate == TCP_CLOSE) {
+        // The connection ended, remove birth informations
+        bpf_map_delete_elem(&tcplife_flow_history, &id);
+    }
 
     // Create a new entry.
     flow_metrics new_flow = {
         .bytes = rx_b + tx_b,
-        .start_mono_time_ns = 0, //*birth_info,
+        .start_mono_time_ns = start_ts,
         .end_mono_time_ns = current_time,
         .flags = 0,
         .iface_direction = INGRESS,
@@ -402,7 +402,7 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         .duration = delta_us,
         .rxbytes = rx_b,
         .txbytes = tx_b,
-        .state = (u8)args->newstate,
+        .state = (u8)newstate,
     };
 
     long ret = bpf_map_update_elem(&tcplife_flows, &id, &new_flow, BPF_ANY);

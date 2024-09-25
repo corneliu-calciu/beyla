@@ -84,15 +84,17 @@ struct {
 // The userspace will aggregate them into a single flow.
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_PERCPU_HASH);
+    __uint(max_entries, 1024);          // Maximum number of entries
     __type(key, flow_id);
     __type(value, flow_metrics);
 } tcplife_flows SEC(".maps");
 
-// struct {
-//     __uint(type, BPF_MAP_TYPE_LRU_HASH);
-//     __type(key, flow_id);
-//     __type(value, u64);
-// } tcplife_birth SEC(".maps");
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 1024);          // Maximum number of entries
+    __type(key, flow_id);
+    __type(value, u64);
+} tcplife_flow_history SEC(".maps");
 
 const u8 ip4in6[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
 

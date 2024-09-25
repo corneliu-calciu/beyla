@@ -42,12 +42,13 @@ import (
 const (
 	qdiscType = "clsact"
 	// constants defined in flows.c as "volatile const"
-	constSampling      = "sampling"
-	constTraceMessages = "trace_messages"
-	aggregatedFlowsMap = "aggregated_flows"
-	connInitiatorsMap  = "conn_initiators"
-	flowDirectionsMap  = "flow_directions"
-	tcpLifeFlowsMap    = "tcplife_flows"
+	constSampling         = "sampling"
+	constTraceMessages    = "trace_messages"
+	aggregatedFlowsMap    = "aggregated_flows"
+	connInitiatorsMap     = "conn_initiators"
+	flowDirectionsMap     = "flow_directions"
+	tcpLifeFlowsMap       = "tcplife_flows"
+	tcpLifeFlowHistoryMap = "tcplife_flow_history"
 )
 
 func tlog() *slog.Logger {
@@ -90,6 +91,7 @@ func NewFlowFetcher(
 	spec.Maps[flowDirectionsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[connInitiatorsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[tcpLifeFlowsMap].MaxEntries = uint32(cacheMaxSize)
+	spec.Maps[tcpLifeFlowHistoryMap].MaxEntries = uint32(cacheMaxSize)
 
 	traceMsgs := 0
 	if tlog.Enabled(context.TODO(), slog.LevelDebug) {

@@ -69,8 +69,8 @@ func NewSockFlowFetcher(
 	spec.Maps[aggregatedFlowsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[flowDirectionsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[connInitiatorsMap].MaxEntries = uint32(cacheMaxSize)
-	//FIXME: add TCPLife map size here
-	spec.Maps[tcpLifeFlowsMap].MaxEntries = 1024 //uint32(cacheMaxSize)
+	spec.Maps[tcpLifeFlowsMap].MaxEntries = uint32(cacheMaxSize)
+	spec.Maps[tcpLifeFlowHistoryMap].MaxEntries = uint32(cacheMaxSize)
 
 	traceMsgs := 0
 	if tlog.Enabled(context.TODO(), slog.LevelDebug) {
