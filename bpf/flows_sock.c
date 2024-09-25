@@ -286,43 +286,6 @@ const flow_record *unused_flow_record __attribute__((unused));
 
 char _license[] SEC("license") = "GPL";
 
-// struct {
-//     __uint(type, BPF_MAP_TYPE_HASH);
-//     __type(key, struct sock *);
-//     __type(value, u64);
-// } birth SEC(".maps");
-
-// struct inet_sock_set_state_args {
-//     long long pad;
-//     const void * skaddr;
-//     int oldstate;
-//     int newstate;
-//     u16 sport;
-//     u16 dport;
-//     u16 family;
-//     u8 protocol;
-//     u8 saddr[4];
-//     u8 daddr[4];
-//     u8 saddr_v6[16];
-//     u8 daddr_v6[16];
-// };
-
-// struct trace_event_raw_inet_sock_set_state {
-// 	struct trace_entry ent;
-// 	const void *skaddr;
-// 	int oldstate;
-// 	int newstate;
-// 	__u16 sport;
-// 	__u16 dport;
-// 	__u16 family;
-// 	__u16 protocol;
-// 	__u8 saddr[4];
-// 	__u8 daddr[4];
-// 	__u8 saddr_v6[16];
-// 	__u8 daddr_v6[16];
-// 	char __data[0];
-// };
-
 SEC("tracepoint/sock/inet_sock_set_state")
 int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
 {
@@ -357,42 +320,13 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     char msg[] = "addr:%d:%d:%d\n";
     bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->daddr[3]);
 
-    // capture birth time
-    if (args->newstate < TCP_FIN_WAIT1) {
-        /*
-         * Matching just ESTABLISHED may be sufficient, provided no code-path
-         * sets ESTABLISHED without a tcp_set_state() call. Until we know
-         * that for sure, match all early states to increase chances a
-         * timestamp is set.
-         * Note that this needs to be set before the PID filter later on,
-         * since the PID isn't reliable for these early stages, so we must
-         * save all timestamps and do the PID filter later when we can.
-         */
-    }
-
-    // record PID & comm on SYN_SENT
-    if (args->newstate == TCP_SYN_SENT || args->newstate == TCP_LAST_ACK) {
-        // now we can PID filter, both here and a little later on for CLOSE
-    }
-
-    if (args->newstate != TCP_CLOSE) {
-        //return 0;
-    }
-
-    // calculate lifespan
     if (args->skaddr == NULL) {
         char msgs[] = "null skaddr\n";
         bpf_trace_printk(msgs, sizeof(msgs));
         return 0;
     }
 
-    u64 rx_b=0, tx_b=0;
-    // get throughput stats. see tcp_get_info().
-    struct tcp_sock *tp = (struct tcp_sock *)(args->skaddr);
-    BPF_CORE_READ_INTO(&rx_b, tp, bytes_received);
-    BPF_CORE_READ_INTO(&tx_b, tp, bytes_sent);
-
-
+    // Fill the flow_id
     flow_id id;
     __builtin_memset(&id, 0, sizeof(id));
 
@@ -417,56 +351,65 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         return 0;
     }
 
+    // Read the TCP connection metrics
+    u64 rx_b=0, tx_b=0;
+    // get throughput stats. see tcp_get_info().
+    struct tcp_sock *tp = (struct tcp_sock *)(args->skaddr);
+    BPF_CORE_READ_INTO(&rx_b, tp, bytes_received);
+    BPF_CORE_READ_INTO(&tx_b, tp, bytes_sent);
+
+    // Read the current time
     u64 current_time = bpf_ktime_get_ns();
 
-    flow_metrics *tcp_flow = (flow_metrics *)bpf_map_lookup_elem(&tcplife_flows, &id);
-    if (tcp_flow != NULL) {
-        char msge[] = "found flow dport:%d\n";
-        bpf_trace_printk(msge, sizeof(msge), dport);
+    //struct sock *sk = (struct sock *)args->skaddr;
 
-        //FIXME
-        tcp_flow->packets += 1;
-        tcp_flow->bytes = rx_b;
-        tcp_flow->end_mono_time_ns = current_time;
-        //
-        tcp_flow->rxbytes = rx_b;
-        tcp_flow->txbytes = tx_b;
-        tcp_flow->duration = current_time;
-        tcp_flow->state = (u8)args->newstate;
-
-        long ret = bpf_map_update_elem(&tcplife_flows, &id, tcp_flow, BPF_ANY);
-        if (ret != 0) {
-            //FIXME
-            char msg1[] = "error-1:%d\n";
-            bpf_trace_printk(msg1, sizeof(msg1), ret);
-            bpf_dbg_printk("error updating flow %d\n", ret);
-            return 0;
-        }
-    } else {
-        char msge[] = "new flow dport:%d\n";
-        bpf_trace_printk(msge, sizeof(msge), dport);
-
-        // Key does not exist in the map, and will need to create a new entry.
-        flow_metrics new_flow = {
-            .packets = 1,
-            .bytes = rx_b,
-            .start_mono_time_ns = current_time,
-            .end_mono_time_ns = current_time,
-            .flags = 0,
-            .iface_direction = INGRESS,
-            .initiator = INITIATOR_SRC,
-            .duration = 0,
-            .rxbytes = rx_b,
-            .txbytes = tx_b,
-            .state = (u8)args->newstate,
-        };
-
-        long ret = bpf_map_update_elem(&tcplife_flows, &id, &new_flow, BPF_ANY);
-        if (ret != 0) {
-            bpf_dbg_printk("error adding flow %d\n", ret);
-            return 0;
-        }
+    // capture birth time
+    if (args->newstate < TCP_FIN_WAIT1) {
+        /*
+         * Matching just ESTABLISHED may be sufficient, provided no code-path
+         * sets ESTABLISHED without a tcp_set_state() call. Until we know
+         * that for sure, match all early states to increase chances a
+         * timestamp is set.
+         * Note that this needs to be set before the PID filter later on,
+         * since the PID isn't reliable for these early stages, so we must
+         * save all timestamps and do the PID filter later when we can.
+         */
+        //bpf_map_update_elem(&tcplife_birth, &id, &current_time, BPF_ANY);        
     }
+
+    // calculate lifespan
+    //u64 *birth_info = (u64*)bpf_map_lookup_elem(&tcplife_birth, sk);
+    //if (birth_info == NULL) {
+    //    return 0;
+    //}
+    
+    if (args->newstate == TCP_CLOSE) {
+        // The connection ended, remove birth informations
+        //bpf_map_delete_elem(&tcplife_birth, &id);
+    }
+
+    u64 delta_us = 1000;
+    //delta_us = (current_time - *birth_info) / 1000;
+
+    // Create a new entry.
+    flow_metrics new_flow = {
+        .bytes = rx_b + tx_b,
+        .start_mono_time_ns = 0, //*birth_info,
+        .end_mono_time_ns = current_time,
+        .flags = 0,
+        .iface_direction = INGRESS,
+        .initiator = INITIATOR_SRC,
+        .duration = delta_us,
+        .rxbytes = rx_b,
+        .txbytes = tx_b,
+        .state = (u8)args->newstate,
+    };
+
+    long ret = bpf_map_update_elem(&tcplife_flows, &id, &new_flow, BPF_ANY);
+    if (ret != 0) {
+        bpf_dbg_printk("error adding flow %d\n", ret);
+        return 0;
+    }    
 
     char msgs[] = "success dport:%d\n";
     bpf_trace_printk(msgs, sizeof(msgs), dport);
