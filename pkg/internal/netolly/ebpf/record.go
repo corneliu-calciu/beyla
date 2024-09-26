@@ -83,6 +83,11 @@ func (fm *NetFlowMetrics) Accumulate(src *NetFlowMetrics) {
 	fm.Bytes += src.Bytes
 	fm.Packets += src.Packets
 	fm.Flags |= src.Flags
+	//FIXME: TCPLife aggregation?
+	fm.Rxbytes += src.Rxbytes
+	fm.Txbytes += src.Txbytes
+	fm.State = src.State
+	fm.Duration = src.Duration
 }
 
 // SrcIP is never null. Returned as pointer for efficiency.

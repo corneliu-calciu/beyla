@@ -214,6 +214,11 @@ func getDefinitions(groups AttrGroups) map[Section]AttrReportGroup {
 				attr.ClientPort:     false,
 				attr.IfaceDirection: Default(ifaceDirEnabled),
 				attr.Iface:          Default(ifaceDirEnabled),
+				// TCPlife
+				attr.State:    false,
+				attr.Rxbytes:  false,
+				attr.Txbytes:  false,
+				attr.Duration: false,
 			},
 		},
 		HTTPServerDuration.Section: {

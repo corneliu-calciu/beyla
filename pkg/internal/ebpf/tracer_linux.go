@@ -28,6 +28,7 @@ func (pt *ProcessTracer) Run(ctx context.Context, out chan<- []request.Span) {
 	// Searches for traceable functions
 	trcrs, err := pt.tracers()
 	if err != nil {
+		fmt.Printf("Run: %s", err)
 		pt.log.Error("couldn't trace process. Stopping process tracer", "error", err)
 		return
 	}
@@ -38,11 +39,13 @@ func (pt *ProcessTracer) Run(ctx context.Context, out chan<- []request.Span) {
 	go func() {
 		<-ctx.Done()
 	}()
+	fmt.Printf("Run exit")
 }
 
 func (pt *ProcessTracer) loadSpec(p Tracer) (*ebpf.CollectionSpec, error) {
 	spec, err := p.Load()
 	if err != nil {
+		fmt.Printf("loading eBPF program: %s", err)
 		return nil, fmt.Errorf("loading eBPF program: %w", err)
 	}
 	if err := spec.RewriteConstants(p.Constants(pt.ELFInfo, pt.Goffsets)); err != nil {
@@ -66,6 +69,7 @@ func (pt *ProcessTracer) tracers() ([]Tracer, error) {
 		plog.Debug("loading eBPF program", "PinPath", pt.PinPath, "pid", pt.ELFInfo.Pid, "cmd", pt.ELFInfo.CmdExePath)
 		spec, err := pt.loadSpec(p)
 		if err != nil {
+			fmt.Printf("tracers error %s", err)
 			return nil, err
 		}
 		if err := spec.LoadAndAssign(p.BpfObjects(), &ebpf.CollectionOptions{
@@ -90,6 +94,7 @@ func (pt *ProcessTracer) tracers() ([]Tracer, error) {
 				}
 			}
 			if err != nil {
+				fmt.Printf("loading and assigning BPF objects %s", err)
 				printVerifierErrorInfo(err)
 				return nil, fmt.Errorf("loading and assigning BPF objects: %w", err)
 			}
@@ -109,30 +114,35 @@ func (pt *ProcessTracer) tracers() ([]Tracer, error) {
 		// Go style Uprobes
 		if err := i.goprobes(p); err != nil {
 			printVerifierErrorInfo(err)
+			fmt.Printf("uprobes %s", err)
 			return nil, err
 		}
 
 		// Kprobes to be used for native instrumentation points
 		if err := i.kprobes(p); err != nil {
 			printVerifierErrorInfo(err)
+			fmt.Printf("kprobes %s", err)
 			return nil, err
 		}
 
 		// Uprobes to be used for native module instrumentation points
 		if err := i.uprobes(pt.ELFInfo.Pid, p); err != nil {
 			printVerifierErrorInfo(err)
+			fmt.Printf("uprobes %s", err)
 			return nil, err
 		}
 
 		// Tracepoints support
 		if err := i.tracepoints(p); err != nil {
 			printVerifierErrorInfo(err)
+			fmt.Printf("tracepoints %s", err)
 			return nil, err
 		}
 
 		// Sock filters support
 		if err := i.sockfilters(p); err != nil {
 			printVerifierErrorInfo(err)
+			fmt.Printf("socket %s", err)
 			return nil, err
 		}
 
@@ -157,6 +167,7 @@ func RunUtilityTracer(p UtilityTracer, pinPath string) error {
 	plog.Debug("loading independent eBPF program")
 	spec, err := p.Load()
 	if err != nil {
+		fmt.Printf("loading eBPF program: %s", err)
 		return fmt.Errorf("loading eBPF program: %w", err)
 	}
 
@@ -165,16 +176,19 @@ func RunUtilityTracer(p UtilityTracer, pinPath string) error {
 			PinPath: pinPath,
 		}}); err != nil {
 		printVerifierErrorInfo(err)
+		fmt.Printf("loading eBPF program: %s", err)
 		return fmt.Errorf("loading and assigning BPF objects: %w", err)
 	}
 
 	if err := i.kprobes(p); err != nil {
 		printVerifierErrorInfo(err)
+		fmt.Printf("loading eBPF program: %s", err)
 		return err
 	}
 
 	if err := i.tracepoints(p); err != nil {
 		printVerifierErrorInfo(err)
+		fmt.Printf("loading eBPF program: %s", err)
 		return err
 	}
 

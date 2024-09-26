@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 
 	"github.com/grafana/beyla/pkg/beyla"
@@ -46,6 +47,7 @@ func RunBeyla(ctx context.Context, cfg *beyla.Config) error {
 			defer wg.Done()
 			if err := setupNetO11y(ctx, ctxInfo, cfg); err != nil {
 				errs <- err
+				os.Exit(1)
 			}
 		}()
 	}

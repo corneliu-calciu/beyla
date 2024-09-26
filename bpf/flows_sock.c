@@ -24,6 +24,7 @@
 #include "bpf_dbg.h"
 #include "flows_common.h"
 #include "protocol_defs.h"
+#include "bpf_core_read.h"
 
 struct __tcphdr {
     __be16 source;
@@ -228,7 +229,7 @@ int socket__http_filter(struct __sk_buff *skb) {
             if(new_flow.iface_direction != UNKNOWN) {
                 // errors are intentionally omitted
                 bpf_map_update_elem(&flow_directions, &id, &new_flow.iface_direction, BPF_NOEXIST);
-            } 
+            }
             // fallback for lost or already started connections and UDP
             else {
                 new_flow.iface_direction = INGRESS;
@@ -284,3 +285,138 @@ const flow_id *unused_flow_id __attribute__((unused));
 const flow_record *unused_flow_record __attribute__((unused));
 
 char _license[] SEC("license") = "GPL";
+
+SEC("tracepoint/sock/inet_sock_set_state")
+int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
+{
+    u16 family = args->family;
+    if (family != AF_INET) {
+        return 0;
+    }
+
+    if (args->protocol != IPPROTO_TCP) {
+        return 0;
+    }
+
+    //unsigned long long pid = bpf_get_current_pid_tgid() >> 32;
+    int newstate = args->newstate;
+
+    // lport is either used in a filter here, or later
+    u16 lport = args->sport;
+
+    // dport is either used in a filter here, or later
+    u16 dport = args->dport;
+
+    //FIXME
+    if (dport != 8001 && lport != 8001) {
+        return 0;
+    }
+
+    // Debug
+    char msg[] = "addr:%d:%d sk:%p\n";
+    bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->skaddr);
+
+    const struct sock *sk = (const struct sock *)args->skaddr;
+    if (sk == NULL) {
+        char msgs[] = "null skaddr\n";
+        bpf_trace_printk(msgs, sizeof(msgs));
+        return 0;
+    }
+
+    // Fill the flow_id
+    flow_id id;
+    __builtin_memset(&id, 0, sizeof(id));
+
+    id.src_port = lport;
+    id.dst_port = dport;
+    id.transport_protocol = args->protocol;
+
+    if (args->family == AF_INET) {
+        u32 ip4_s_l;
+        u32 ip4_d_l;
+        BPF_CORE_READ_INTO(&ip4_s_l, args, saddr);        
+        BPF_CORE_READ_INTO(&ip4_d_l, args, daddr);        
+
+        __builtin_memcpy(id.src_ip.s6_addr, ip4in6, sizeof(ip4in6));
+        __builtin_memcpy(id.dst_ip.s6_addr, ip4in6, sizeof(ip4in6));
+        __builtin_memcpy(id.src_ip.s6_addr + sizeof(ip4in6), &ip4_s_l, sizeof(ip4_s_l));
+        __builtin_memcpy(id.dst_ip.s6_addr + sizeof(ip4in6), &ip4_d_l, sizeof(ip4_d_l));             
+    } else if (args->family == AF_INET6) {
+        BPF_CORE_READ_INTO(&id.src_ip.s6_addr, args, saddr_v6);
+        BPF_CORE_READ_INTO(&id.dst_ip.s6_addr, args, daddr_v6);
+    } else {
+        return 0;
+    }
+
+    // Read the TCP connection metrics
+    u64 rx_b=0, tx_b=0;
+    // get throughput stats. see tcp_get_info().
+    struct tcp_sock *tp = (struct tcp_sock *)(args->skaddr);
+    BPF_CORE_READ_INTO(&rx_b, tp, bytes_received);
+    BPF_CORE_READ_INTO(&tx_b, tp, bytes_sent);
+
+    // Read the current time
+    u64 current_time = bpf_ktime_get_ns();
+
+    // capture birth time
+    if (newstate < TCP_FIN_WAIT1) {
+        /*
+         * Matching just ESTABLISHED may be sufficient, provided no code-path
+         * sets ESTABLISHED without a tcp_set_state() call. Until we know
+         * that for sure, match all early states to increase chances a
+         * timestamp is set.
+         * Note that this needs to be set before the PID filter later on,
+         * since the PID isn't reliable for these early stages, so we must
+         * save all timestamps and do the PID filter later when we can.
+         */
+        bpf_map_update_elem(&tcplife_flow_history, &sk, &current_time, BPF_ANY);
+        // Debug   
+        char msg[] = "create history:%p\n";
+        bpf_trace_printk(msg, sizeof(msg), sk);                 
+    }
+
+    // calculate lifespan
+    u64 *birth_info = (u64*)bpf_map_lookup_elem(&tcplife_flow_history, &sk);
+    if (birth_info == NULL) {
+        // Debug
+        char msg[] = "cannot find history:%p\n";
+        bpf_trace_printk(msg, sizeof(msg), sk);  
+        return 0;
+    }
+    
+    u64 start_ts = *birth_info;
+    u64 delta_us = (current_time - start_ts) / 1000;
+
+    if (newstate == TCP_CLOSE) {
+        // The connection ended, remove birth informations
+        bpf_map_delete_elem(&tcplife_flow_history, &sk);
+        // Debug
+        char msg[] = "remove history:%p\n";
+        bpf_trace_printk(msg, sizeof(msg), sk);        
+    }
+
+    // Create a new entry.
+    flow_metrics new_flow = {
+        .bytes = rx_b + tx_b,
+        .start_mono_time_ns = start_ts,
+        .end_mono_time_ns = current_time,
+        .flags = 0,
+        .iface_direction = INGRESS,
+        .initiator = INITIATOR_SRC,
+        .duration = delta_us,
+        .rxbytes = rx_b,
+        .txbytes = tx_b,
+        .state = (u8)newstate,
+    };
+
+    long ret = bpf_map_update_elem(&tcplife_flows, &id, &new_flow, BPF_ANY);
+    if (ret != 0) {
+        bpf_dbg_printk("error adding flow %d\n", ret);
+        return 0;
+    }    
+
+    char msgs[] = "success dport:%d age:%llu ms\n";
+    bpf_trace_printk(msgs, sizeof(msgs), dport, delta_us/1000);
+
+    return 0;
+}

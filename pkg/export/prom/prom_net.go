@@ -3,6 +3,7 @@ package prom
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/mariomac/pipes/pipe"
 	"github.com/prometheus/client_golang/prometheus"
@@ -127,6 +128,8 @@ func (r *netMetricsReporter) observe(flow *ebpf.Record) {
 	labelValues := make([]string, 0, len(r.attrs))
 	for _, attr := range r.attrs {
 		labelValues = append(labelValues, attr.Get(flow))
+		data := fmt.Sprintf("labels:%v-%v", attr, labelValues)
+		slog.With("component", "prom.net").Debug("observeTCPLife", "labels", data)
 	}
 	r.flowBytes.WithLabelValues(labelValues...).metric.Add(float64(flow.Metrics.Bytes))
 }
