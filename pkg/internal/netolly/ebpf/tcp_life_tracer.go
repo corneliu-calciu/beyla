@@ -22,13 +22,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"syscall"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
-	"golang.org/x/sys/unix"
 
 	"github.com/grafana/beyla/pkg/internal/netolly/ifaces"
 )
@@ -94,16 +92,6 @@ func NewTCPLifeFlowFetcher(
 		return nil, fmt.Errorf("loading and assigning BPF objects: %w", err)
 	}
 
-	fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, int(htons(unix.ETH_P_ALL)))
-	if err == nil {
-		ssoErr := syscall.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_ATTACH_BPF, objects.SocketHttpFilter.FD())
-		if ssoErr != nil {
-			return nil, fmt.Errorf("loading and assigning BPF objects: %w", ssoErr)
-		}
-	} else {
-		return nil, fmt.Errorf("loading and assigning BPF objects: %w", err)
-	}
-
 	// Insert TCPLife hook
 	kp, err := link.Tracepoint("sock", "inet_sock_set_state", objects.HandleSetState, nil)
 	if err != nil {
@@ -114,6 +102,7 @@ func NewTCPLifeFlowFetcher(
 	}
 
 	// read events from socket filter ringbuffer
+	// TODO: add support for ringbuffer notifications later
 	flows, err := ringbuf.NewReader(objects.DirectFlows)
 	if err != nil {
 		return nil, fmt.Errorf("accessing to ringbuffer: %w", err)
