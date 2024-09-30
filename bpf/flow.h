@@ -53,6 +53,11 @@ typedef struct flow_metrics_t {
     // 0 otherwise
     // https://chromium.googlesource.com/chromiumos/docs/+/master/constants/errnos.md
     u8 errno;
+    // TCPLife
+    u8 state;
+    u64 rxbytes;
+    u64 txbytes;
+    u64 duration;
 } __attribute__((packed)) flow_metrics;
 
 // Attributes that uniquely identify a flow

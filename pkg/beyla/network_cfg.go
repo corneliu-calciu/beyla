@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	EbpfSourceTC   = "tc"
-	EbpfSourceSock = "socket_filter"
+	EbpfSourceTC      = "tc"
+	EbpfSourceSock    = "socket_filter"
+	EbpfSourceTCPLife = "tcplife" //TCPLife
 )
 
 type NetworkConfig struct {

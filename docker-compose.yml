@@ -1,0 +1,42 @@
+version: '3.3'
+services:
+  beyla:
+    container_name: beyla
+    privileged: true
+    ports:
+      - 8999:8999
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./agent-config.yml:/root/agent-config.yml
+      - ./bin/beyla:/beyla
+      - /sys/:/sys/
+    image: avesha.azurecr.io/dev/beyla:base
+
+    environment:
+      KUBECONFIG: /home/ccalciu/config/istio-kube.config
+      BEYLA_CONFIG_PATH: /root/agent-config.yml
+      AGENT_MODE: flow
+      BEYLA_KUBE_METADATA_ENABLE: true
+      BEYLA_DISCOVERY_POLL_INTERVAL: 500ms
+      BEYLA_SKIP_GO_SPECIFIC_TRACERS: false
+      BEYLA_METRICS_REPORT_PEER: true
+      BEYLA_METRICS_REPORT_TARGET: true
+      BEYLA_METRICS_INTERVAL: 10ms
+      BEYLA_BPF_BATCH_TIMEOUT: 10ms
+      BEYLA_LOG_LEVEL: DEBUG
+      #BEYLA_BPF_DEBUG: true
+      BEYLA_HOSTNAME: beyla
+      BEYLA_BPF_HTTP_REQUEST_TIMEOUT: 5s
+      BEYLA_PROCESSES_INTERVAL: 1000ms
+      BEYLA_INTERNAL_METRICS_PROMETHEUS_PORT: 8999
+      BEYLA_NETWORK_PRINT_FLOWS: true
+      BEYLA_KUBE_CLUSTER_NAME: dev
+      #BEYLA_PRINT_TRACES: true
+      #BEYLA_TRACE_PRINTER: json
+      #BEYLA_TRACE_PRINTER: text
+      BEYLA_NETWORK_CACHE_MAX_FLOWS: 1024
+      BEYLA_NETWORK_SOURCE: socket_filter
+      BEYLA_NETWORK_LISTEN_INTERFACES: poll
+      BEYLA_NETWORK_METRICS: true

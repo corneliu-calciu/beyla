@@ -1,0 +1,107 @@
+#print_traces: true
+
+ebpf:
+  wakeup_len: 1
+
+grafana:
+  otlp:
+    submit: ["metrics","traces"]
+
+otel_traces_export:
+  sampler:
+    name: parentbased_traceidratio
+    arg: "0.01"
+
+prometheus_export:
+  port: 8999
+  path: /metrics
+
+internal_metrics:
+  prometheus:
+    port: 8899
+    path: /internal/metrics
+
+routes:
+  patterns:
+    - /unicorn
+    - /**
+  ignored_patterns:
+    - /health
+    - /readiness
+    - /liveness
+    - /is-dynamic-lb-initialized
+  unmatched: heuristic
+
+discovery:
+  services:
+    #- exe_path: (python3.10)
+    #  namespace: default
+
+    #- exe_path: (notmatch)
+    #  namespace: default
+
+    # The Kubernetes namespace selector
+    - k8s_namespace: (bookinfo|boutique|rate|apps)
+      #k8s_pod_name: (frontend)
+
+    # The Kubernetes namespace selector
+    # - name: acme
+    #   namespace: acme
+    #   k8s_namespace: acme
+    #   k8s_pod_name: (frontend)
+
+    # The Kubernetes deployment name selector
+    #- namespace: demoboutique-deployment
+    #  k8s_namespace: boutique
+    #  k8s_deployment_name: backend
+
+    # The Kubernetes replicaset name selector
+    # - namespace: demoboutique-rs
+    #   k8s_namespace: boutique
+    #   k8s_replicaset_name: ((frontend-(0-9az)*)|(backend-(0-9az)*))
+
+    # The Kubernetes pod name selector
+    # - namespace: demoboutique-pod  # Telemetry service namespace identifier unrelated to Kubernetes
+    #   k8s_namespace: boutique
+    #   k8s_pod_name: ((ms-[0-9]*)|(backend-64c7857694-hhnvp))
+
+    # The Kubernetes pods labels
+    #- name: labels-match
+    #  namespace: apps
+    #-  k8s_pod_labels:
+    #    allow-ebpf: "true"
+
+    # The Kubernetes namespace selector with multiple namespaces
+    #- name: infra-namespace-must-match
+    #  namespace: infra-namespace
+    #  k8s_namespace: infra
+  exclude_services:
+    # testing service exclusion, by expecting that K8s discovery only picks the "otherinstance"
+    # deployment (ignoring the "testserver" in the other pod)
+    - k8s_namespace: (kube-system|kube-node-lease|kube-public|smart-scaler|metallb-system)
+
+attributes:
+  kubernetes:
+    enable: true 
+  select:
+    beyla_network_flow_bytes:
+      include:  
+        - k8s.src.owner.name
+        - k8s.src.namespace
+        - k8s.dst.owner.name
+        - k8s.dst.namespace
+        - src.address
+        - src.port
+        - dst.address
+        - dst.port
+        - transport
+        - duration
+        - rxbytes
+        - txbytes
+        - state
+
+# filter:
+#   network:
+#     transport:
+#       match: TCP
+
