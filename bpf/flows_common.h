@@ -80,7 +80,7 @@ struct {
     __type(value, u8);
 } conn_initiators SEC(".maps");
 
-// TCPLive
+// TCPLife
 // Key: the flow identifier. Value: the flow metrics for that identifier.
 // The userspace will aggregate them into a single flow.
 struct {

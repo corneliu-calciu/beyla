@@ -42,18 +42,22 @@ type MapTracer struct {
 	// manages the access to the eviction routines, avoiding two evictions happening at the same time
 	evictionCond   *sync.Cond
 	lastEvictionNs uint64
+	//TCPLife
+	rawSamplesMode bool
 }
 
 type mapFetcher interface {
 	LookupAndDeleteMap() map[ebpf.NetFlowId][]ebpf.NetFlowMetrics
 }
 
-func NewMapTracer(fetcher mapFetcher, evictionTimeout time.Duration) *MapTracer {
+func NewMapTracer(fetcher mapFetcher, evictionTimeout time.Duration, rawSamplesMode bool) *MapTracer {
 	return &MapTracer{
 		mapFetcher:      fetcher,
 		evictionTimeout: evictionTimeout,
 		lastEvictionNs:  uint64(monotime.Now()),
 		evictionCond:    sync.NewCond(&sync.Mutex{}),
+		//TCPlife
+		rawSamplesMode: rawSamplesMode,
 	}
 }
 
@@ -110,6 +114,23 @@ func (m *MapTracer) evictFlows(ctx context.Context, forwardFlows chan<- []*ebpf.
 	var forwardingFlows []*ebpf.Record
 	laterFlowNs := uint64(0)
 	for flowKey, flowMetrics := range m.mapFetcher.LookupAndDeleteMap() {
+		if m.rawSamplesMode {
+			//TCPLife: flows to be added directly to forwardingFlows
+			for _, metric := range flowMetrics {
+				item := &ebpf.Record{
+					NetFlowRecordT: ebpf.NetFlowRecordT{
+						Id:      flowKey,
+						Metrics: metric,
+					},
+				}
+				//TODO: remove this update
+				if metric.EndMonoTimeNs > laterFlowNs {
+					laterFlowNs = metric.EndMonoTimeNs
+				}
+				forwardingFlows = append(forwardingFlows, item)
+			}
+			continue
+		}
 		aggregatedMetrics := m.aggregate(flowMetrics)
 		// we ignore metrics that haven't been aggregated (e.g. all the mapped values are ignored)
 		if aggregatedMetrics.EndMonoTimeNs == 0 {

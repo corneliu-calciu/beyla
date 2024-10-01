@@ -194,7 +194,7 @@ func flowsAgent(
 		return iface
 	}
 
-	mapTracer := flow.NewMapTracer(fetcher, cfg.NetworkFlows.CacheActiveTimeout)
+	mapTracer := flow.NewMapTracer(fetcher, cfg.NetworkFlows.CacheActiveTimeout, cfg.NetworkFlows.Source == beyla.EbpfSourceTCPLife)
 	rbTracer := flow.NewRingBufTracer(fetcher, mapTracer, cfg.NetworkFlows.CacheActiveTimeout)
 	return &Flows{
 		ctxInfo:        ctxInfo,

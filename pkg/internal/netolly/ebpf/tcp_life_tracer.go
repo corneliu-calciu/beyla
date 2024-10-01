@@ -65,7 +65,7 @@ func NewTCPLifeFlowFetcher(
 		return nil, fmt.Errorf("loading BPF data: %w", err)
 	}
 
-	tlog.Info(">>>>>>>>>>>>>>>>>>>>>> TCP flow live fetcher <<<<<<<<<<<<<<<")
+	tlog.Info(">>>>>>>>>>>>>>>>>>>>>> TCPLife fetcher <<<<<<<<<<<<<<<")
 
 	// Resize aggregated flows and flow directions maps according to user-provided configuration
 	spec.Maps[aggregatedFlowsMap].MaxEntries = uint32(1)
@@ -193,7 +193,7 @@ func (m *TCPLifeFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics
 		}
 		for i := 0; i < len(metrics); i++ {
 			// Skip empty records
-			if metrics[i].Bytes == 0 && metrics[i].Rxbytes == 0 && metrics[i].Txbytes == 0 {
+			if metrics[i].Bytes == 0 && metrics[i].Txbytes == 0 {
 				continue
 			}
 			data := fmt.Sprintf("%v DIP:%v", metrics[i], id.DstIp)

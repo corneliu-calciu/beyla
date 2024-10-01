@@ -93,6 +93,19 @@ func RecordGetters(name attr.Name) (attributes.Getter[*Record, attribute.KeyValu
 			}
 			return attribute.Int(string(attr.ServerPort), int(serverPort))
 		}
+	// TCPLife
+	case attr.State:
+		getter = func(r *Record) attribute.KeyValue {
+			return attribute.Int(string(attr.State), int(r.Metrics.State))
+		}
+	case attr.Txbytes:
+		getter = func(r *Record) attribute.KeyValue {
+			return attribute.Float64(string(attr.Txbytes), float64(r.Metrics.Txbytes))
+		}
+	case attr.Duration:
+		getter = func(r *Record) attribute.KeyValue {
+			return attribute.Int64(string(attr.Duration), int64(r.Metrics.EndMonoTimeNs-r.Metrics.StartMonoTimeNs))
+		}
 	default:
 		getter = func(r *Record) attribute.KeyValue { return attribute.String(string(name), r.Attrs.Metadata[name]) }
 	}

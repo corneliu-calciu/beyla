@@ -55,9 +55,7 @@ typedef struct flow_metrics_t {
     u8 errno;
     // TCPLife
     u8 state;
-    u64 rxbytes;
     u64 txbytes;
-    u64 duration;
 } __attribute__((packed)) flow_metrics;
 
 // Attributes that uniquely identify a flow

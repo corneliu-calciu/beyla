@@ -82,6 +82,11 @@ const (
 
 	ClientPort = Name("client.port")
 
+	//TCPLife
+	State    = Name("state")
+	Txbytes  = Name("txbytes")
+	Duration = Name("duration")
+
 	// Direction values: request or response
 	Direction = Name("direction")
 	// IfaceDirection values: ingress or egress

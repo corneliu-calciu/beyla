@@ -298,6 +298,11 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         return 0;
     }
 
+    // If sampling is defined, will only parse 1 out of "sampling" TCP flows
+    if (sampling != 0 && (bpf_get_prandom_u32() % sampling) != 0) {
+        return 0;
+    }
+
     //unsigned long long pid = bpf_get_current_pid_tgid() >> 32;
     int newstate = args->newstate;
 
@@ -385,7 +390,6 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     }
 
     u64 start_ts = *birth_info;
-    u64 delta_us = (current_time - start_ts) / 1000;
 
     if (newstate == TCP_CLOSE) {
         // The connection ended, remove birth informations
@@ -397,14 +401,12 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
 
     // Create a new entry.
     flow_metrics new_flow = {
-        .bytes = rx_b + tx_b,
+        .bytes = rx_b,
         .start_mono_time_ns = start_ts,
         .end_mono_time_ns = current_time,
         .flags = 0,
         .iface_direction = INGRESS,
         .initiator = INITIATOR_SRC,
-        .duration = delta_us,
-        .rxbytes = rx_b,
         .txbytes = tx_b,
         .state = (u8)newstate,
     };
@@ -416,6 +418,7 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     }
 
     char msgs[] = "success dport:%d age:%llu ms\n";
+    u64 delta_us = (current_time - start_ts) / 1000;
     bpf_trace_printk(msgs, sizeof(msgs), dport, delta_us/1000);
 
     return 0;
