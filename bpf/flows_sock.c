@@ -307,13 +307,13 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     int newstate = args->newstate;
 
     // lport is either used in a filter here, or later
-    u16 lport = args->sport;
+    u16 sport = args->sport;
 
     // dport is either used in a filter here, or later
     u16 dport = args->dport;
 
     //FIXME
-    if (dport != 8001 && lport != 8001) {
+    if (dport != 8001 && sport != 8001) {
         return 0;
     }
 
@@ -332,8 +332,9 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     flow_id id;
     __builtin_memset(&id, 0, sizeof(id));
 
-    id.src_port = lport;
-    id.dst_port = dport;
+    // Reverse here src/dst to have a sane view after K8s resources are resolved
+    id.src_port = dport;
+    id.dst_port = sport;
     id.transport_protocol = args->protocol;
 
     if (args->family == AF_INET) {
@@ -341,14 +342,14 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         u32 ip4_d_l;
         BPF_CORE_READ_INTO(&ip4_s_l, args, saddr);
         BPF_CORE_READ_INTO(&ip4_d_l, args, daddr);
-
-        __builtin_memcpy(id.src_ip.s6_addr, ip4in6, sizeof(ip4in6));
+        // Reverse here src/dst to have a sane view after K8s resources are resolved
         __builtin_memcpy(id.dst_ip.s6_addr, ip4in6, sizeof(ip4in6));
-        __builtin_memcpy(id.src_ip.s6_addr + sizeof(ip4in6), &ip4_s_l, sizeof(ip4_s_l));
-        __builtin_memcpy(id.dst_ip.s6_addr + sizeof(ip4in6), &ip4_d_l, sizeof(ip4_d_l));
+        __builtin_memcpy(id.src_ip.s6_addr, ip4in6, sizeof(ip4in6));
+        __builtin_memcpy(id.dst_ip.s6_addr + sizeof(ip4in6), &ip4_s_l, sizeof(ip4_s_l));
+        __builtin_memcpy(id.src_ip.s6_addr + sizeof(ip4in6), &ip4_d_l, sizeof(ip4_d_l));
     } else if (args->family == AF_INET6) {
-        BPF_CORE_READ_INTO(&id.src_ip.s6_addr, args, saddr_v6);
-        BPF_CORE_READ_INTO(&id.dst_ip.s6_addr, args, daddr_v6);
+        BPF_CORE_READ_INTO(&id.dst_ip.s6_addr, args, saddr_v6);
+        BPF_CORE_READ_INTO(&id.src_ip.s6_addr, args, daddr_v6);
     } else {
         return 0;
     }
@@ -406,7 +407,7 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         .end_mono_time_ns = current_time,
         .flags = 0,
         .iface_direction = INGRESS,
-        .initiator = INITIATOR_SRC,
+        .initiator = INITIATOR_DST,
         .txbytes = tx_b,
         .state = (u8)newstate,
     };
