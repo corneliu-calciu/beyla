@@ -311,10 +311,15 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
 
     // dport is either used in a filter here, or later
     u16 dport = args->dport;
-
-    //FIXME
-    if (dport != 8001 && sport != 8001) {
-        return 0;
+    
+    // Check for configured ports
+    if (tcplife_flow_use_filter != 0) {
+        u8 *filter = (u8*)bpf_map_lookup_elem(&tcplife_flow_filter, &sport);
+        if (filter == NULL) {
+            //char msg[] = "Dst port is not in the fiter config:%d\n";
+            //bpf_trace_printk(msg, sizeof(msg), sport);
+            return 0;
+        }
     }
 
     // Debug
@@ -398,6 +403,9 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         // Debug
         char msg[] = "remove history:%p\n";
         bpf_trace_printk(msg, sizeof(msg), sk);
+    } else {
+        // For now annonce the sessions when are closed and have a complete view of information's.
+        return 0;
     }
 
     // Create a new entry.

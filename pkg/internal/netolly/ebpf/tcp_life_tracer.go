@@ -35,8 +35,10 @@ import (
 //go:generate $BPF2GO -cc $BPF_CLANG -cflags $BPF_CFLAGS -type flow_metrics_t -type flow_id_t  -type flow_record_t -target amd64,arm64 NetSk ../../../../bpf/flows_sock.c -- -I../../../../bpf/headers
 
 const (
-	tcpLifeFlowsMap       = "tcplife_flows"
-	tcpLifeFlowHistoryMap = "tcplife_flow_history"
+	tcpLifeFlowsMap           = "tcplife_flows"
+	tcpLifeFlowHistoryMap     = "tcplife_flow_history"
+	tcplifeFlowFilter         = "tcplife_flow_filter"
+	constTcplifeFlowUseFilter = "tcplife_flow_use_filter"
 )
 
 // TCPLifeFlowFetcher reads and forwards the Flows from the eBPF kernel space with a socket filter implementation.
@@ -51,7 +53,7 @@ type TCPLifeFlowFetcher struct {
 }
 
 func NewTCPLifeFlowFetcher(
-	sampling, cacheMaxSize int,
+	sampling, cacheMaxSize int, useEbpfFilter int,
 ) (*TCPLifeFlowFetcher, error) {
 	tlog := tlog()
 	if err := rlimit.RemoveMemlock(); err != nil {
@@ -71,6 +73,7 @@ func NewTCPLifeFlowFetcher(
 	spec.Maps[aggregatedFlowsMap].MaxEntries = uint32(1)
 	spec.Maps[flowDirectionsMap].MaxEntries = uint32(1)
 	spec.Maps[connInitiatorsMap].MaxEntries = uint32(1)
+	spec.Maps[tcplifeFlowFilter].MaxEntries = uint32(128)
 
 	spec.Maps[tcpLifeFlowsMap].MaxEntries = uint32(cacheMaxSize)
 	spec.Maps[tcpLifeFlowHistoryMap].MaxEntries = uint32(cacheMaxSize)
@@ -80,8 +83,9 @@ func NewTCPLifeFlowFetcher(
 		traceMsgs = 1
 	}
 	if err := spec.RewriteConstants(map[string]interface{}{
-		constSampling:      uint32(sampling),
-		constTraceMessages: uint8(traceMsgs),
+		constSampling:             uint32(sampling),
+		constTraceMessages:        uint8(traceMsgs),
+		constTcplifeFlowUseFilter: uint32(useEbpfFilter),
 	}); err != nil {
 		return nil, fmt.Errorf("rewriting BPF constants definition: %w", err)
 	}
@@ -207,4 +211,22 @@ func (m *TCPLifeFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics
 
 	tlog().Debug("LookupAndDeleteMapTCPLife", "count", count)
 	return flows
+}
+
+// Noop because socket filters don't require special registration for different network interfaces
+func (m *TCPLifeFlowFetcher) UpdateFilter(dstPorts []uint16) error {
+	tlog().Debug("UpdateFilter TCPLife", "allowed dst ports", dstPorts)
+
+	flowFilter := m.objects.TcplifeFlowFilter
+
+	for _, portNumber := range dstPorts {
+		var enabled uint8 = 1
+		err := flowFilter.Update(portNumber, enabled, ebpf.UpdateAny)
+		if err != nil {
+			tlog().Error("updating tcplife filter", "error", err)
+			return fmt.Errorf("updating tcplife filter %s", err)
+		}
+	}
+
+	return nil
 }

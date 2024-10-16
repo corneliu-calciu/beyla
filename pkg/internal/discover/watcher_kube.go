@@ -180,7 +180,7 @@ func (wk *watcherKubeEnricher) enrichProcessEvent(processEvents []Event[processA
 	for _, procEvent := range processEvents {
 		switch procEvent.Type {
 		case EventCreated:
-			wk.log.Debug("new process", "pid", procEvent.Obj.pid)
+			//REMOVE-ME: wk.log.Debug("new process", "pid", procEvent.Obj.pid)
 			if procWithMeta, ok := wk.onNewProcess(procEvent.Obj); ok {
 				eventsWithMeta = append(eventsWithMeta, Event[processAttrs]{
 					Type: EventCreated,
@@ -188,7 +188,7 @@ func (wk *watcherKubeEnricher) enrichProcessEvent(processEvents []Event[processA
 				})
 			}
 		case EventDeleted:
-			wk.log.Debug("process stopped", "pid", procEvent.Obj.pid)
+			//REMOVE-ME: wk.log.Debug("process stopped", "pid", procEvent.Obj.pid)
 			delete(wk.containerByPID, procEvent.Obj.pid)
 			// no need to decorate deleted processes
 			eventsWithMeta = append(eventsWithMeta, procEvent)
@@ -203,7 +203,7 @@ func (wk *watcherKubeEnricher) onNewProcess(procInfo processAttrs) (processAttrs
 	containerInfo, err := wk.getContainerInfo(procInfo.pid)
 	if err != nil {
 		// it is expected for any process not running inside a container
-		wk.log.Debug("can't get container info for PID", "pid", procInfo.pid, "error", err)
+		//REMOVE-ME: wk.log.Debug("can't get container info for PID", "pid", procInfo.pid, "error", err)
 		return processAttrs{}, false
 	}
 

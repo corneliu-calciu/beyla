@@ -97,6 +97,14 @@ struct {
     __uint(max_entries, 1024);          // Maximum number of entries
 } tcplife_flow_history SEC(".maps");
 
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __type(key, u16);
+    __type(value, u8);
+    __uint(max_entries, 128);          // Maximum number of entries
+} tcplife_flow_filter SEC(".maps");
+
+volatile const u32 tcplife_flow_use_filter = 0;
 
 const u8 ip4in6[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
 

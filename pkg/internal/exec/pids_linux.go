@@ -3,7 +3,6 @@ package exec
 import (
 	"bufio"
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -27,14 +26,14 @@ func FindNamespace(pid int32) (uint32, error) {
 		return 0, fmt.Errorf("failed to read symlink(/proc/%d/ns/pid): %w", pid, err)
 	}
 
-	logger := slog.With("component", "pids.Tracer")
+	//logger := slog.With("component", "pids.Tracer")
 
 	nsPid := string(buf[:n])
 	// extract u32 from the format pid:[nnnnn]
 	start := strings.LastIndex(nsPid, "[")
 	end := strings.LastIndex(nsPid, "]")
 
-	logger.Debug("Found namespace", "nsPid", nsPid)
+	//REMOVE-ME: logger.Debug("Found namespace", "nsPid", nsPid)
 
 	if start >= 0 && end >= 0 && end > start {
 		npid, err := strconv.ParseUint(string(buf[start+1:end]), 10, 32)

@@ -43,9 +43,7 @@ type NetFlowMetricsT struct {
 	Initiator       uint8
 	Errno           uint8
 	State           uint8
-	Rxbytes         uint64
 	Txbytes         uint64
-	Duration        uint64
 }
 
 type NetFlowRecordT struct {
@@ -106,6 +104,7 @@ type NetMapSpecs struct {
 	ConnInitiators     *ebpf.MapSpec `ebpf:"conn_initiators"`
 	DirectFlows        *ebpf.MapSpec `ebpf:"direct_flows"`
 	FlowDirections     *ebpf.MapSpec `ebpf:"flow_directions"`
+	TcplifeFlowFilter  *ebpf.MapSpec `ebpf:"tcplife_flow_filter"`
 	TcplifeFlowHistory *ebpf.MapSpec `ebpf:"tcplife_flow_history"`
 	TcplifeFlows       *ebpf.MapSpec `ebpf:"tcplife_flows"`
 }
@@ -133,6 +132,7 @@ type NetMaps struct {
 	ConnInitiators     *ebpf.Map `ebpf:"conn_initiators"`
 	DirectFlows        *ebpf.Map `ebpf:"direct_flows"`
 	FlowDirections     *ebpf.Map `ebpf:"flow_directions"`
+	TcplifeFlowFilter  *ebpf.Map `ebpf:"tcplife_flow_filter"`
 	TcplifeFlowHistory *ebpf.Map `ebpf:"tcplife_flow_history"`
 	TcplifeFlows       *ebpf.Map `ebpf:"tcplife_flows"`
 }
@@ -143,6 +143,7 @@ func (m *NetMaps) Close() error {
 		m.ConnInitiators,
 		m.DirectFlows,
 		m.FlowDirections,
+		m.TcplifeFlowFilter,
 		m.TcplifeFlowHistory,
 		m.TcplifeFlows,
 	)

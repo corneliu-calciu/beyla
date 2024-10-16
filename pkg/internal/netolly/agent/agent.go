@@ -24,10 +24,12 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strconv"
 
 	"github.com/cilium/ebpf/ringbuf"
 
 	"github.com/grafana/beyla/pkg/beyla"
+	"github.com/grafana/beyla/pkg/internal/filter"
 	"github.com/grafana/beyla/pkg/internal/netolly/ebpf"
 	"github.com/grafana/beyla/pkg/internal/netolly/flow"
 	"github.com/grafana/beyla/pkg/internal/netolly/ifaces"
@@ -159,15 +161,49 @@ func FlowsAgent(ctxInfo *global.ContextInfo, cfg *beyla.Config) (*Flows, error) 
 		}
 	case beyla.EbpfSourceTCPLife:
 		alog.Info("using TCP session events")
-		fetcher, err = ebpf.NewTCPLifeFlowFetcher(cfg.NetworkFlows.Sampling, cfg.NetworkFlows.CacheMaxFlows)
+
+		// Get network filtering config
+		allowedDstPort, err := getEbpfFilters(cfg.Filters.Network)
 		if err != nil {
 			return nil, err
 		}
+
+		tcpFetcher, err := ebpf.NewTCPLifeFlowFetcher(cfg.NetworkFlows.Sampling, cfg.NetworkFlows.CacheMaxFlows, len(allowedDstPort))
+		if err != nil {
+			return nil, err
+		}
+
+		// Update the eBPF filter map
+		err = tcpFetcher.UpdateFilter(allowedDstPort)
+		if err != nil {
+			return nil, err
+		}
+
+		// Set the fetcher
+		fetcher = tcpFetcher
 	default:
 		return nil, fmt.Errorf("unknown network configuration eBPF source specified, allowed options are [tc, socket_filter, tcplife]")
 	}
 
 	return flowsAgent(ctxInfo, cfg, informer, fetcher, agentIP)
+}
+
+func getEbpfFilters(cfg filter.AttributeFamilyConfig) ([]uint16, error) {
+	// Initialize allowed destination port list. White list support.
+	allowedDstPort := make([]uint16, 0)
+
+	dstPortFilter, found := cfg["dst_port"]
+	if !found {
+		return allowedDstPort, nil
+	}
+
+	// TODO: find a way to expand the glob-style config
+	port, err := strconv.Atoi(dstPortFilter.Match)
+	if err == nil {
+		allowedDstPort = append(allowedDstPort, uint16(port))
+	}
+
+	return allowedDstPort, nil
 }
 
 // flowsAgent is a private constructor with injectable dependencies, usable for tests

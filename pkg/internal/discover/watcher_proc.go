@@ -127,7 +127,7 @@ func (pa *pollAccounter) Run(out chan<- []Event[processAttrs]) {
 			log.Warn("can't get system processes", "error", err)
 		} else {
 			if events := pa.snapshot(procs); len(events) > 0 {
-				log.Debug("new process watching events", "events", events)
+				//REMOVE-ME: log.Debug("new process watching events", "events", events)
 				out <- events
 			}
 		}
@@ -270,7 +270,7 @@ func (pa *pollAccounter) checkNewProcessConnectionNotification(
 				return true
 			}
 			notReadyProcs[pp.Pid] = struct{}{}
-			wplog().Debug("Executable not ready", "pid", pp.Pid)
+			//REMOVE-ME: wplog().Debug("Executable not ready", "pid", pp.Pid)
 		}
 	}
 	return false
@@ -289,7 +289,7 @@ func (pa *pollAccounter) checkNewProcessNotification(pid PID, reportedProcs, not
 				return true
 			}
 			notReadyProcs[pid] = struct{}{}
-			wplog().Debug("Executable not ready", "pid", pid)
+			//REMOVE-ME: wplog().Debug("Executable not ready", "pid", pid)
 		}
 	}
 	return false

@@ -34,6 +34,30 @@ func mtlog() *slog.Logger {
 	return slog.With("component", "flow.MapTracer")
 }
 
+// TCPLife
+type TCPFlowEntryT struct {
+	SrcIp             struct{ In6U struct{ U6Addr8 [16]uint8 } }
+	DstIp             struct{ In6U struct{ U6Addr8 [16]uint8 } }
+	EthProtocol       uint16
+	SrcPort           uint16
+	DstPort           uint16
+	TransportProtocol uint8
+	IfIndex           uint32
+}
+
+func getHashKey(id *ebpf.NetFlowIdT) string {
+	data := make([]byte, 0)
+	// Append SrcIp
+	data = append(data, id.SrcIp.In6U.U6Addr8[:]...)
+	// Append DstIp
+	data = append(data, id.DstIp.In6U.U6Addr8[:]...)
+	// Dst port
+	dstPort := [2]uint8{uint8(id.DstPort >> 8), uint8(id.DstPort & 0xFF)}
+	data = append(data, dstPort[:]...)
+
+	return string(data)
+}
+
 // MapTracer accesses a mapped source of flows (the eBPF PerCPU HashMap), deserializes it into
 // a flow Record structure, and performs the accumulation of each perCPU-record into a single flow
 type MapTracer struct {
@@ -44,6 +68,7 @@ type MapTracer struct {
 	lastEvictionNs uint64
 	//TCPLife
 	rawSamplesMode bool
+	flowCache      map[string]TCPFlowEntryT
 }
 
 type mapFetcher interface {
@@ -58,6 +83,7 @@ func NewMapTracer(fetcher mapFetcher, evictionTimeout time.Duration, rawSamplesM
 		evictionCond:    sync.NewCond(&sync.Mutex{}),
 		//TCPlife
 		rawSamplesMode: rawSamplesMode,
+		flowCache:      make(map[string]TCPFlowEntryT),
 	}
 }
 

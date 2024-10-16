@@ -47,9 +47,9 @@ type ProcessMatch struct {
 func (m *matcher) run(in <-chan []Event[processAttrs], out chan<- []Event[ProcessMatch]) {
 	m.log.Debug("starting criteria matcher node")
 	for i := range in {
-		m.log.Debug("filtering processes", "len", len(i))
+		//REMOVE_ME: m.log.Debug("filtering processes", "len", len(i))
 		o := m.filter(i)
-		m.log.Debug("processes matching selection criteria", "len", len(o))
+		//REMOVE-ME: m.log.Debug("processes matching selection criteria", "len", len(o))
 		if len(o) > 0 {
 			out <- o
 		}
@@ -79,7 +79,7 @@ func (m *matcher) filterCreated(obj processAttrs) (Event[ProcessMatch], bool) {
 	}
 	proc, err := processInfo(obj)
 	if err != nil {
-		m.log.Debug("can't get information for process", "pid", obj.pid, "error", err)
+		//REMOVE-ME: m.log.Debug("can't get information for process", "pid", obj.pid, "error", err)
 		return Event[ProcessMatch]{}, false
 	}
 	for i := range m.criteria {
@@ -109,7 +109,7 @@ func (m *matcher) filterCreated(obj processAttrs) (Event[ProcessMatch], bool) {
 func (m *matcher) filterDeleted(obj processAttrs) (Event[ProcessMatch], bool) {
 	proc, ok := m.processHistory[obj.pid]
 	if !ok {
-		m.log.Debug("deleted untracked process. Ignoring", "pid", obj.pid)
+		//REMOVE-ME: m.log.Debug("deleted untracked process. Ignoring", "pid", obj.pid)
 		return Event[ProcessMatch]{}, false
 	}
 	delete(m.processHistory, obj.pid)
