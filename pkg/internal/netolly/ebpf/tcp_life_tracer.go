@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/cilium/ebpf"
@@ -28,6 +29,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 
+	"github.com/grafana/beyla/pkg/internal/filter"
 	"github.com/grafana/beyla/pkg/internal/netolly/ifaces"
 )
 
@@ -53,7 +55,7 @@ type TCPLifeFlowFetcher struct {
 }
 
 func NewTCPLifeFlowFetcher(
-	sampling, cacheMaxSize int, useEbpfFilter int,
+	sampling, cacheMaxSize int, filterCfg filter.AttributeFamilyConfig,
 ) (*TCPLifeFlowFetcher, error) {
 	tlog := tlog()
 	if err := rlimit.RemoveMemlock(); err != nil {
@@ -68,6 +70,10 @@ func NewTCPLifeFlowFetcher(
 	}
 
 	tlog.Info(">>>>>>>>>>>>>>>>>>>>>> TCPLife fetcher <<<<<<<<<<<<<<<")
+	dstPortsFilter, err := getEbpfFilters(filterCfg)
+	if err != nil {
+		return nil, fmt.Errorf("loading filter data: %w", err)
+	}
 
 	// Resize aggregated flows and flow directions maps according to user-provided configuration
 	spec.Maps[aggregatedFlowsMap].MaxEntries = uint32(1)
@@ -85,7 +91,7 @@ func NewTCPLifeFlowFetcher(
 	if err := spec.RewriteConstants(map[string]interface{}{
 		constSampling:             uint32(sampling),
 		constTraceMessages:        uint8(traceMsgs),
-		constTcplifeFlowUseFilter: uint32(useEbpfFilter),
+		constTcplifeFlowUseFilter: uint32(len(dstPortsFilter)),
 	}); err != nil {
 		return nil, fmt.Errorf("rewriting BPF constants definition: %w", err)
 	}
@@ -103,6 +109,12 @@ func NewTCPLifeFlowFetcher(
 		return nil, fmt.Errorf("opening kprobe: %s", err)
 	} else {
 		tlog.Info("TCPLife: Successfully installed hook")
+	}
+
+	// Update the eBPF filter map
+	err = updateFilter(&objects, dstPortsFilter)
+	if err != nil {
+		return nil, fmt.Errorf("updating BPF filter: %w", err)
 	}
 
 	// read events from socket filter ringbuffer
@@ -213,11 +225,34 @@ func (m *TCPLifeFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics
 	return flows
 }
 
-// Noop because socket filters don't require special registration for different network interfaces
-func (m *TCPLifeFlowFetcher) UpdateFilter(dstPorts []uint16) error {
+func getEbpfFilters(cfg filter.AttributeFamilyConfig) ([]uint16, error) {
+	// Initialize allowed destination port list. White list support.
+	allowedDstPort := make([]uint16, 0)
+
+	dstPortFilter, found := cfg["dst_port"]
+	if !found {
+		return allowedDstPort, nil
+	}
+
+	// TODO: find a way to expand the glob-style config
+	port, err := strconv.Atoi(dstPortFilter.Match)
+	if err == nil {
+		allowedDstPort = append(allowedDstPort, uint16(port))
+	}
+
+	return allowedDstPort, nil
+}
+
+// Only destination port filtering is supported now in the eBPF code. Later we may add more.
+func updateFilter(objects *NetSkObjects, dstPorts []uint16) error {
+	// Sanity checking
+	if objects == nil {
+		return fmt.Errorf("nil NetSkObjects pointer")
+	}
+
 	tlog().Debug("UpdateFilter TCPLife", "allowed dst ports", dstPorts)
 
-	flowFilter := m.objects.TcplifeFlowFilter
+	flowFilter := objects.TcplifeFlowFilter
 
 	for _, portNumber := range dstPorts {
 		var enabled uint8 = 1
