@@ -193,7 +193,7 @@ func (m *TCPLifeFlowFetcher) ReadRingBuf() (ringbuf.Record, error) {
 // ebpf side while we process/aggregate them here
 // Changing this method invocation by BatchLookupAndDelete could improve performance
 func (m *TCPLifeFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics {
-	tlog().Debug("LookupAndDeleteMapTCPLife ...")
+	//tlog().Debug("LookupAndDeleteMapTCPLife ...")
 
 	flowMap := m.objects.TcplifeFlows
 
@@ -212,16 +212,16 @@ func (m *TCPLifeFlowFetcher) LookupAndDeleteMap() map[NetFlowId][]NetFlowMetrics
 			if metrics[i].Bytes == 0 && metrics[i].Txbytes == 0 {
 				continue
 			}
-			data := fmt.Sprintf("%v DIP:%v", metrics[i], id.DstIp)
-			tlog().Debug("LookupAndDeleteMapTCPLife", "state", metrics[i].State, "metrics", data)
+			//data := fmt.Sprintf("%v DIP:%v", metrics[i], id.DstIp)
+			//tlog().Debug("LookupAndDeleteMapTCPLife", "state", metrics[i].State, "metrics", data)
 			flows[id] = append(flows[id], metrics[i])
 		}
 		count += 1
-		data := fmt.Sprintf("%v", id)
-		tlog().Debug("LookupAndDeleteMapTCPLife", "data", data)
+		//data := fmt.Sprintf("%v", id)
+		//tlog().Debug("LookupAndDeleteMapTCPLife", "data", data)
 	}
 
-	tlog().Debug("LookupAndDeleteMapTCPLife", "count", count)
+	//tlog().Debug("LookupAndDeleteMapTCPLife", "count", count)
 	return flows
 }
 

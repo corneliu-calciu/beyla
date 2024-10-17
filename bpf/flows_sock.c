@@ -286,6 +286,9 @@ const flow_record *unused_flow_record __attribute__((unused));
 
 char _license[] SEC("license") = "GPL";
 
+// Verbose mode
+const static bool verbose_mode = false;
+
 SEC("tracepoint/sock/inet_sock_set_state")
 int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
 {
@@ -316,20 +319,22 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
     if (tcplife_flow_use_filter != 0) {
         u8 *filter = (u8*)bpf_map_lookup_elem(&tcplife_flow_filter, &sport);
         if (filter == NULL) {
-            //char msg[] = "Dst port is not in the fiter config:%d\n";
-            //bpf_trace_printk(msg, sizeof(msg), sport);
             return 0;
         }
     }
 
     // Debug
-    char msg[] = "addr:%d:%d sk:%p\n";
-    bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->skaddr);
+    if (verbose_mode) {
+        char msg[] = "addr:%d:%d sk:%p\n";
+        bpf_trace_printk(msg, sizeof(msg), args->daddr[0], args->daddr[1], args->skaddr);
+    }
 
     const struct sock *sk = (const struct sock *)args->skaddr;
     if (sk == NULL) {
-        char msgs[] = "null skaddr\n";
-        bpf_trace_printk(msgs, sizeof(msgs));
+        if (verbose_mode) {
+            char msgs[] = "null skaddr\n";
+            bpf_trace_printk(msgs, sizeof(msgs));
+        }
         return 0;
     }
 
@@ -382,16 +387,20 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
          */
         bpf_map_update_elem(&tcplife_flow_history, &sk, &current_time, BPF_ANY);
         // Debug
-        char msg[] = "create history:%p\n";
-        bpf_trace_printk(msg, sizeof(msg), sk);
+        if (verbose_mode) {
+            char msg[] = "create history:%p\n";
+            bpf_trace_printk(msg, sizeof(msg), sk);
+        }
     }
 
     // calculate lifespan
     u64 *birth_info = (u64*)bpf_map_lookup_elem(&tcplife_flow_history, &sk);
     if (birth_info == NULL) {
         // Debug
-        char msg[] = "cannot find history:%p\n";
-        bpf_trace_printk(msg, sizeof(msg), sk);
+        if (verbose_mode) {        
+            char msg[] = "cannot find history:%p\n";
+            bpf_trace_printk(msg, sizeof(msg), sk);
+        }
         return 0;
     }
 
@@ -401,8 +410,10 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         // The connection ended, remove birth informations
         bpf_map_delete_elem(&tcplife_flow_history, &sk);
         // Debug
-        char msg[] = "remove history:%p\n";
-        bpf_trace_printk(msg, sizeof(msg), sk);
+        if (verbose_mode) {        
+            char msg[] = "remove history:%p\n";
+            bpf_trace_printk(msg, sizeof(msg), sk);
+        }
     } else {
         // For now annonce the sessions when are closed and have a complete view of information's.
         return 0;
@@ -426,9 +437,11 @@ int handle_set_state(struct trace_event_raw_inet_sock_set_state *args)
         return 0;
     }
 
-    char msgs[] = "success dport:%d age:%llu ms\n";
-    u64 delta_us = (current_time - start_ts) / 1000;
-    bpf_trace_printk(msgs, sizeof(msgs), dport, delta_us/1000);
-
+    if (verbose_mode) {
+        char msgs[] = "success dport:%d age:%llu ms\n";
+        u64 delta_us = (current_time - start_ts) / 1000;
+        bpf_trace_printk(msgs, sizeof(msgs), dport, delta_us/1000);
+    }
+    
     return 0;
 }
